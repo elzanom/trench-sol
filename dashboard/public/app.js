@@ -658,6 +658,7 @@ function init() {
   // is shown and the dashboard content stays hidden until token is set.
   checkAuthRequired().then(ok => {
     if (!ok) return;  // banner showing, don't init polling
+    hideAuthBanner();  // 2026-06-06: unhide dashboard after successful auth (was blank page bug)
 
     // Initial load
     refreshStatus();
