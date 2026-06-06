@@ -3,6 +3,13 @@
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
+// 2026-06-06: replaced 6-stacked-prompt() flow with inline UI (auth-banner
+// in index.html). New flow:
+//   1. Page loads. If no token in localStorage, call /api/token-check.
+//   2. If requires_auth=true, show inline banner + hide dashboard content.
+//   3. User pastes token → POST /api/token-check validates → save to
+//      localStorage → reload page.
+//   4. If token exists in localStorage, dashboard loads normally.
 const AUTH_TOKEN = localStorage.getItem('dashboard_token') || '';
 const API_BASE = '';
 const REFRESH_MS = 10000;
@@ -26,17 +33,90 @@ async function api(path, options = {}) {
   });
 
   if (res.status === 401) {
-    const token = prompt('Enter dashboard auth token:');
-    if (token) {
-      localStorage.setItem('dashboard_token', token);
-      location.reload();
-    }
+    // 2026-06-06: bad token in localStorage (e.g. server restarted with new
+    // token). Show the auth banner and clear stored token.
+    localStorage.removeItem('dashboard_token');
+    showAuthBanner('Stored token was rejected. Please re-enter.');
     throw new Error('Unauthorized');
   }
 
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'API error');
   return data;
+}
+
+// ─── Auth banner ───────────────────────────────────────────────────────────────
+// 2026-06-06: inline UI replacement for the broken 6-stacked-prompt() flow.
+// Public endpoint /api/token-check tells us whether auth is needed without
+// requiring a token. Banner shows once, validates the token before saving.
+function showAuthBanner(message) {
+  const banner = document.getElementById('auth-banner');
+  const dash = document.getElementById('dashboard-content');
+  const input = document.getElementById('auth-token-input');
+  const errEl = document.getElementById('auth-error');
+  if (!banner || !dash) return;
+  dash.style.display = 'none';
+  banner.style.display = 'flex';
+  if (message) document.getElementById('auth-message').textContent = message;
+  if (input) {
+    setTimeout(() => input.focus(), 100);
+    input.value = '';
+  }
+  if (errEl) errEl.textContent = '';
+}
+
+function hideAuthBanner() {
+  const banner = document.getElementById('auth-banner');
+  const dash = document.getElementById('dashboard-content');
+  if (banner) banner.style.display = 'none';
+  if (dash) dash.style.display = '';
+}
+
+async function checkAuthRequired() {
+  try {
+    const res = await fetch('/api/token-check');
+    if (!res.ok) return;  // server error — assume auth not required
+    const data = await res.json();
+    if (data.requires_auth && !AUTH_TOKEN) {
+      showAuthBanner(data.message);
+      return false;
+    }
+  } catch {
+    return;  // network error — fall through, let api() calls fail naturally
+  }
+  return true;
+}
+
+async function submitAuthToken() {
+  const input = document.getElementById('auth-token-input');
+  const errEl = document.getElementById('auth-error');
+  const btn = document.getElementById('auth-submit-btn');
+  if (!input) return;
+  const token = input.value.trim();
+  if (!token) {
+    if (errEl) errEl.textContent = 'Please paste a token.';
+    return;
+  }
+  btn.disabled = true;
+  if (errEl) errEl.textContent = 'Validating…';
+  try {
+    const res = await fetch('/api/token-check', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    });
+    if (res.ok) {
+      localStorage.setItem('dashboard_token', token);
+      location.reload();
+    } else {
+      const data = await res.json().catch(() => ({}));
+      if (errEl) errEl.textContent = data.error || 'Invalid token. Try again.';
+      btn.disabled = false;
+    }
+  } catch (e) {
+    if (errEl) errEl.textContent = 'Network error: ' + e.message;
+    btn.disabled = false;
+  }
 }
 
 // ─── Refresh functions ─────────────────────────────────────────────────────────
@@ -130,10 +210,15 @@ async function refreshWallets() {
     }
 
     for (const sw of (data.sub_wallets || [])) {
+      // 2026-06-06: prefer display_balance from server (paper mode
+      // shows "X.XX SOL (active)" if wallet has open position).
+      const bal = sw.display_balance
+        ? sw.display_balance
+        : (sw.balance_sol != null ? sw.balance_sol.toFixed(4) + ' SOL' : '--');
       html += `<div class="sub-wallet-item">
         <span class="sw-index">#${sw.index}</span>
-        <span class="sw-address">${truncate(sw.address, 12)}</span>
-        <span class="sw-balance">${sw.balance_sol != null ? sw.balance_sol.toFixed(4) : '--'} SOL</span>
+        <span class="sw-address">${truncate(sw.publicKey || sw.address, 12)}</span>
+        <span class="sw-balance">${bal}</span>
       </div>`;
     }
 
@@ -186,7 +271,7 @@ async function refreshStats() {
   try {
     const data = await api('/api/stats');
     const pnl = data.total_pnl_sol ?? 0;
-    const winRate = data.win_rate ?? 0;
+    const winRate = data.win_rate_pct ?? data.win_rate ?? 0;  // 2026-06-06: server returns win_rate_pct
     const totalTrades = data.total_trades ?? 0;
 
     updateStatCard('stat-total-pnl', (pnl >= 0 ? '+' : '') + pnl.toFixed(4) + ' SOL', pnl >= 0 ? 'profit' : 'loss');
@@ -417,6 +502,117 @@ function addLog(type, source, message) {
   logBox.scrollTop = logBox.scrollHeight;
 }
 
+// ─── Trade History (Last 20) ──────────────────────────────────────────────────
+
+// 2026-06-06: render closed trades from /api/trades?status=closed.
+// Table columns: Symbol | Mode | P&L% | P&L SOL | Exit Reason | Duration | Time.
+async function refreshTrades() {
+  try {
+    const data = await api('/api/trades?limit=20&status=closed');
+    const tbody = document.getElementById('trades-body');
+    const trades = (data.trades || []).filter(t => t.exit_time != null);
+
+    if (!trades.length) {
+      tbody.innerHTML = '<tr><td colspan="7" class="loading">No closed trades yet</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = trades.map(t => {
+      const pnlPct = t.pnl_pct ?? 0;
+      const pnlSol = t.pnl_sol ?? 0;
+      const pnlClass = pnlPct >= 0 ? 'pnl-positive' : 'pnl-negative';
+      const pnlSign = pnlPct >= 0 ? '+' : '';
+      const modeIcon = t.source === 'paper' ? '🟡 paper'
+        : t.source === 'live' ? '🟢 live'
+        : (t.source?.includes('backtest') || t.source?.includes('seed')) ? '📊 backtest'
+        : '⚪ ?';
+      const exitTime = t.exit_time ? new Date(t.exit_time).toLocaleString() : '--';
+      const dur = t.hold_duration_minutes != null ? formatDuration(t.hold_duration_minutes) : '--';
+      return `<tr>
+        <td><strong>${escHtml(t.symbol || '?')}</strong></td>
+        <td>${modeIcon}</td>
+        <td class="${pnlClass}">${pnlSign}${pnlPct.toFixed(2)}%</td>
+        <td class="${pnlClass}">${pnlSign}${pnlSol.toFixed(4)}</td>
+        <td>${escHtml(t.exit_reason || '--')}</td>
+        <td>${dur}</td>
+        <td>${exitTime}</td>
+      </tr>`;
+    }).join('');
+
+    // Re-render PnL chart with same data
+    renderPnlChart(trades);
+  } catch (err) {
+    addLog('warn', 'trades', err.message);
+  }
+}
+
+// 2026-06-06: cumulative P&L line chart from /api/trades.
+// X axis: trade # (1, 2, 3...). Y axis: cumulative pnl_sol.
+// Line color: green if final ≥ 0, red if final < 0. Baseline at y=0.
+let pnlChartInstance = null;
+function renderPnlChart(trades) {
+  if (typeof Chart === 'undefined') return;  // CDN not loaded
+  const canvas = document.getElementById('pnl-chart');
+  if (!canvas) return;
+
+  // Sort ascending by exit_time so cumulative is chronologically correct
+  const sorted = [...trades].sort((a, b) => (a.exit_time || 0) - (b.exit_time || 0));
+  let cum = 0;
+  const data = sorted.map(t => { cum += (t.pnl_sol || 0); return cum; });
+  const labels = sorted.map((_, i) => i + 1);
+  const final = data.length ? data[data.length - 1] : 0;
+  const lineColor = final >= 0 ? '#10b981' : '#ef4444';
+  const fillColor = final >= 0 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)';
+
+  const config = {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Cumulative P&L (SOL)',
+          data,
+          borderColor: lineColor,
+          backgroundColor: fillColor,
+          fill: true,
+          tension: 0.2,
+          pointRadius: 3,
+          pointBackgroundColor: lineColor,
+        },
+        {
+          label: 'Baseline (y=0)',
+          data: labels.map(() => 0),
+          borderColor: 'rgba(255,255,255,0.3)',
+          borderDash: [5, 5],
+          borderWidth: 1,
+          pointRadius: 0,
+          fill: false,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { color: '#e0e0e0' } },
+        tooltip: { callbacks: { label: (ctx) => `Trade #${ctx.label}: ${ctx.parsed.y.toFixed(4)} SOL` } },
+      },
+      scales: {
+        x: { title: { display: true, text: 'Trade #', color: '#a0a0a0' }, ticks: { color: '#a0a0a0' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+        y: { title: { display: true, text: 'Cumulative P&L (SOL)', color: '#a0a0a0' }, ticks: { color: '#a0a0a0' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+      },
+    },
+  };
+
+  if (pnlChartInstance) {
+    pnlChartInstance.data = config.data;
+    pnlChartInstance.options = config.options;
+    pnlChartInstance.update();
+  } else {
+    pnlChartInstance = new Chart(canvas, config);
+  }
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function updateStatCard(id, value, colorClass = '') {
@@ -452,27 +648,40 @@ function init() {
   document.getElementById('cb-reset-btn').addEventListener('click', resetCircuitBreaker);
   document.getElementById('switch-paper-btn')?.addEventListener('click', switchToPaper);
   document.getElementById('switch-live-btn')?.addEventListener('click', switchToLive);
+  // 2026-06-06: auth banner submit handler
+  document.getElementById('auth-submit-btn')?.addEventListener('click', submitAuthToken);
+  document.getElementById('auth-token-input')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') submitAuthToken();
+  });
 
-  // Initial load
-  refreshStatus();
-  refreshWallets();
-  refreshPositions();
-  refreshStats();
-  refreshDaily();
+  // 2026-06-06: check auth first. If token required but missing, the banner
+  // is shown and the dashboard content stays hidden until token is set.
+  checkAuthRequired().then(ok => {
+    if (!ok) return;  // banner showing, don't init polling
 
-  addLog('system', 'dashboard', 'Dashboard connected');
-
-  // Start polling loop
-  setInterval(() => {
+    // Initial load
     refreshStatus();
-    refreshPositions();
-    refreshDaily();
-  }, REFRESH_MS);
-
-  setInterval(() => {
-    refreshStats();
     refreshWallets();
-  }, REFRESH_MS * 2);
+    refreshPositions();
+    refreshStats();
+    refreshDaily();
+    refreshTrades();  // 2026-06-06: trade history + PnL chart
+
+    addLog('system', 'dashboard', 'Dashboard connected');
+
+    // Start polling loop
+    setInterval(() => {
+      refreshStatus();
+      refreshPositions();
+      refreshDaily();
+    }, REFRESH_MS);
+
+    setInterval(() => {
+      refreshStats();
+      refreshWallets();
+      refreshTrades();  // 2026-06-06: refresh trade history + chart
+    }, REFRESH_MS * 2);
+  });
 }
 
 // ─── Run ──────────────────────────────────────────────────────────────────────

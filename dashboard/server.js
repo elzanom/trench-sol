@@ -38,7 +38,7 @@ function redactConfig(cfg) {
   return redacted;
 }
 
-// ─── Auth middleware ───────────────────────────────────────────────────────────
+// ─── Build app ─────────────────────────────────────────────────────────────────
 
 function authMiddleware(req, res, next) {
   const config = loadConfig();
@@ -56,8 +56,6 @@ function authMiddleware(req, res, next) {
   next();
 }
 
-// ─── Build app ─────────────────────────────────────────────────────────────────
-
 export function buildApp() {
   const app = express();
   app.use(express.json());
@@ -65,6 +63,30 @@ export function buildApp() {
   // Serve static files
   const publicDir = path.join(__dirname, 'public');
   app.use(express.static(publicDir));
+
+  // 2026-06-06: public endpoints (no auth required) — registered BEFORE
+  // app.use('/api', authMiddleware) so the inline auth banner can call them
+  // without a token. Replaces the broken 6-stacked-prompt() flow.
+  app.get('/api/token-check', (req, res) => {
+    const config = loadConfig();
+    res.json({
+      requires_auth: !!config.dashboard?.auth_token,
+      message: 'Token authentication required. Enter the dashboard token from config.json (dashboard.auth_token).',
+    });
+  });
+
+  app.post('/api/token-check', (req, res) => {
+    const config = loadConfig();
+    const expected = config.dashboard?.auth_token;
+    const provided = req.body?.token;
+    if (!expected) {
+      return res.json({ valid: true, message: 'No auth configured on server' });
+    }
+    if (provided === expected) {
+      return res.json({ valid: true });
+    }
+    return res.status(401).json({ valid: false, error: 'Invalid token' });
+  });
 
   // Auth on all /api routes
   app.use('/api', authMiddleware);
@@ -177,18 +199,31 @@ export function buildApp() {
   });
 
   // ── GET /api/trades ─────────────────────────────────────────────────────────
+  // 2026-06-06: now returns full closed-trade record (symbol, source,
+  // entry/exit_price_usd, pnl_pct, exit_reason, hold_duration_minutes,
+  // exit_time) via updated getRecentPerformance. ORDER BY exit_time DESC
+  // NULLS LAST so closed trades come first, open positions at the bottom.
+  // For pure trade history (closed only) the frontend can pass
+  // ?status=closed to filter.
   app.get('/api/trades', async (req, res) => {
     try {
       const page = Math.max(1, parseInt(req.query.page || 1));
       const limit = Math.min(100, Math.max(1, parseInt(req.query.limit || 20)));
       const offset = (page - 1) * limit;
+      const statusFilter = req.query.status; // 'closed' | 'open' | undefined
 
-      const { getTradeById } = await import('../memory/ledger.js');
       const { getRecentPerformance } = await import('../memory/ledger.js');
 
-      // getRecentPerformance returns last N trades (already paginated)
-      const trades = await getRecentPerformance(limit);
-      const allTrades = Array.isArray(trades) ? trades : [];
+      // getRecentPerformance returns last N trades sorted by exit_time DESC
+      const trades = await getRecentPerformance(limit * (page || 1));
+      let allTrades = Array.isArray(trades) ? trades : [];
+
+      // Apply status filter (closed = has exit_time; open = no exit_time)
+      if (statusFilter === 'closed') {
+        allTrades = allTrades.filter(t => t.exit_time != null);
+      } else if (statusFilter === 'open') {
+        allTrades = allTrades.filter(t => t.exit_time == null);
+      }
 
       // Paginate manually
       const paginated = allTrades.slice(offset, offset + limit);
@@ -267,6 +302,33 @@ export function buildApp() {
       } catch (e) {
         // Sub-wallet fetch failed — return empty array
       }
+
+      // Simulated balance per sub-wallet: "X.XX SOL (active)" if has open
+      // position, else "0.00 SOL". Paper mode has no real SOL, so we surface
+      // committed amounts (open positions) instead of the real RPC balance.
+      // 2026-06-06: requested simplification — don't compute closed pnl.
+      let activeBySubWallet = {};
+      try {
+        const pm = await import('../execution/position.js');
+        const active = await pm.getActivePositions();
+        for (const p of active) {
+          const idx = p.sub_wallet_index;
+          if (!idx) continue;
+          activeBySubWallet[idx] = (activeBySubWallet[idx] || 0) + (p.amount_sol || 0);
+        }
+      } catch {}
+
+      subWallets = subWallets.map(sw => {
+        const committed = activeBySubWallet[sw.index] || 0;
+        return {
+          ...sw,
+          balance_sol: sw.balance ?? sw.balance_sol ?? 0,  // real RPC balance (0 in paper)
+          committed_sol: committed,
+          display_balance: committed > 0
+            ? `${committed.toFixed(2)} SOL (active)`
+            : '0.00 SOL',
+        };
+      });
 
       res.json({
         main: {

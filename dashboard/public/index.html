@@ -5,11 +5,27 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>TrenchAgent Dashboard</title>
   <link rel="stylesheet" href="style.css" />
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 </head>
 <body>
 
-<div class="dashboard">
+  <!-- Auth banner — shown only if token not in localStorage.
+       Replaces the 6-stacked-prompt() flow that caused "data not loading"
+       bugs (user dismisses prompt → no token saved → all 401s).
+       Server endpoint: GET/POST /api/token-check (no auth required). -->
+  <div id="auth-banner" class="auth-banner" style="display:none;">
+    <div class="auth-banner-inner">
+      <h3>🔒 Dashboard Token Required</h3>
+      <p id="auth-message">Enter the dashboard auth token to view live data.</p>
+      <div class="auth-form">
+        <input type="password" id="auth-token-input" placeholder="Paste token from config.json" autocomplete="off" />
+        <button id="auth-submit-btn">Save &amp; Reload</button>
+        <span id="auth-error" class="auth-error"></span>
+      </div>
+    </div>
+  </div>
+
+<div class="dashboard" id="dashboard-content" style="display:none;">
 
   <!-- Header -->
   <header class="header">
@@ -106,6 +122,29 @@
     <h2>📈 Cumulative P&L (Last 30 Trades)</h2>
     <div class="chart-wrap">
       <canvas id="pnl-chart"></canvas>
+    </div>
+  </section>
+
+  <!-- Trade History (Last 20 closed trades) -->
+  <section class="card">
+    <h2>📜 Trade History (Last 20)</h2>
+    <div class="table-wrap">
+      <table id="trades-table" class="data-table">
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>Mode</th>
+            <th>P&L %</th>
+            <th>P&L SOL</th>
+            <th>Exit Reason</th>
+            <th>Duration</th>
+            <th>Time</th>
+          </tr>
+        </thead>
+        <tbody id="trades-body">
+          <tr><td colspan="7" class="loading">Loading...</td></tr>
+        </tbody>
+      </table>
     </div>
   </section>
 
