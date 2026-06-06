@@ -5,6 +5,9 @@
     "paper_trading": true,
     "log_level": "info"
   },
+  "paper_trading": {
+    "paper_starting_balance_sol": 1.0
+  },
   "llm": {
     "provider": "opencode",
     "model": "MiniMax-M3-Free",

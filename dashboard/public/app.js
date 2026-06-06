@@ -275,7 +275,24 @@ async function refreshStats() {
     const winRate = data.win_rate_pct ?? data.win_rate ?? 0;  // 2026-06-06: server returns win_rate_pct
     const totalTrades = data.total_trades ?? 0;
 
-    updateStatCard('stat-total-pnl', (pnl >= 0 ? '+' : '') + pnl.toFixed(4) + ' SOL', pnl >= 0 ? 'profit' : 'loss');
+    // 2026-06-07: paper portfolio simulation. In paper mode, render the
+    // starting balance + realized PnL + return % as a "PORTFOLIO (SIM)" card.
+    // In live mode, fall back to absolute Total P&L (the original behavior).
+    const pp = data.paper_portfolio;
+    const pnlLabel = document.getElementById('stat-total-pnl-label');
+    const pnlSub = document.getElementById('stat-total-pnl-sub');
+    if (pp) {
+      const sign = pp.return_pct >= 0 ? '+' : '';
+      const color = pp.return_pct >= 0 ? 'profit' : 'loss';
+      const value = pp.current_sol.toFixed(4) + ' SOL';
+      updateStatCard('stat-total-pnl', value, color);
+      if (pnlLabel) pnlLabel.textContent = 'Portfolio (Sim)';
+      if (pnlSub) pnlSub.textContent = `${sign}${pp.return_pct.toFixed(2)}% dari ${pp.starting_balance_sol} SOL awal`;
+    } else {
+      updateStatCard('stat-total-pnl', (pnl >= 0 ? '+' : '') + pnl.toFixed(4) + ' SOL', pnl >= 0 ? 'profit' : 'loss');
+      if (pnlLabel) pnlLabel.textContent = 'Total P&L';
+      if (pnlSub) pnlSub.textContent = '';
+    }
     updateStatCard('stat-win-rate', winRate.toFixed(1) + '%');
     updateStatCard('stat-total-trades', totalTrades);
 

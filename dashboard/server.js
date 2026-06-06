@@ -248,10 +248,29 @@ export function buildApp() {
       const stats = await getLedgerStats(50);
       const signalAccuracy = await getSignalAccuracy(50);
 
+      // 2026-06-07: paper portfolio simulation — track starting balance +
+      // realized paper PnL so the user can see return % against initial
+      // capital. Only populated when paper_trading=true.
+      const isPaper = config.agent?.paper_trading === true;
+      let paper_portfolio = null;
+      if (isPaper) {
+        const startingBalance = config.paper_trading?.paper_starting_balance_sol ?? 1.0;
+        const realizedPnl = stats.by_source?.paper?.total_pnl_sol ?? 0;
+        const currentPortfolio = startingBalance + realizedPnl;
+        const returnPct = startingBalance > 0 ? (realizedPnl / startingBalance) * 100 : 0;
+        paper_portfolio = {
+          starting_balance_sol: startingBalance,
+          current_sol: currentPortfolio,
+          realized_pnl_sol: realizedPnl,
+          return_pct: returnPct,
+        };
+      }
+
       res.json({
         ...stats,  // includes by_source breakdown (live/paper/backtest/etc.)
         signal_accuracy: signalAccuracy,
-        paper_trading: config.agent?.paper_trading === true,
+        paper_trading: isPaper,
+        paper_portfolio,
       });
     } catch (err) {
       res.status(500).json({ error: err.message });
