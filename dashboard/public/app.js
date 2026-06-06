@@ -157,11 +157,12 @@ async function refreshStatus() {
     document.getElementById('pause-btn').disabled = isPaused;
     document.getElementById('resume-btn').disabled = !isPaused;
 
-    // Stats cards
-    updateStatCard('stat-total-pnl', '? SOL');
-    updateStatCard('stat-win-rate', '--%');
+    // Stats cards (only the fields refreshStatus owns — the P&L / win-rate /
+    // total-trades cards are managed by refreshStats to avoid flicker.
+    // 2026-06-06: removed placeholder overwrites that caused the stat cards
+    // to flash "--" every 10s because refreshStatus polled more often than
+    // refreshStats (REFRESH_MS vs REFRESH_MS*2).
     updateStatCard('stat-active-pos', data.active_positions);
-    updateStatCard('stat-total-trades', '--');
 
     // Circuit breaker card
     const cbStatus = document.getElementById('cb-status-value');
