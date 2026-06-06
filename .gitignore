@@ -1,0 +1,56 @@
+# Environment and secrets
+.env
+*.session
+telegram.session
+
+# Dependencies
+node_modules/
+
+# Data and logs
+memory/db/
+memory/db/trades.db
+memory/db/vector-index/
+memory/trades.db
+memory/vector-index/
+logs/
+*.log
+
+# Backtest results
+backtest/results/
+
+# Migration / backup files
+*.bak
+*.enc
+backups/
+# Old GMGN migration rollback files (now superseded by hybrid)
+feeds/screener.js.bak
+feeds/pumpfun.js.bak
+analysis/rugcheck.js.bak
+.env.pre-gmgn-migration.bak
+
+# Build output
+dist/
+build/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Optional: keep your local config overrides
+# config.local.json
+
+# Devnet test wallets (contain devnet secret keys, never commit)
+tests/.devnet-test-wallets.json
+
+# Test artifacts and ad-hoc test scripts (not part of npm test)
+/test-*.mjs
+/test-cb-persist.mjs
+/test-trace.mjs
+/test-verbose.mjs
+data/
+tests/*.db
+paper-stats.sh

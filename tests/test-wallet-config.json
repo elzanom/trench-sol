@@ -1,0 +1,23 @@
+{
+  "wallet": {
+    "rpc_endpoint": "https://api.devnet.solana.com",
+    "rpc_fallbacks": [],
+    "use_devnet": true,
+    "priority_fee_lamports": 10000,
+    "sub_wallets_enabled": true,
+    "sub_wallet_rotation": "per_trade",
+    "sub_wallet_fund_amount_sol": 0.1,
+    "use_jito": false,
+    "jito_tip_lamports": 10000
+  },
+  "position": {
+    "max_concurrent": 3
+  },
+  "rate_limits": {
+    "helius_rps": 10
+  },
+  "hard_rules": {
+    "max_daily_loss_sol": 0.2,
+    "max_daily_trades": 20
+  }
+}

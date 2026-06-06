@@ -1,0 +1,9 @@
+{
+  "rate_limits": {
+    "helius_rps": 10,
+    "gmgn_rps": 5,
+    "rugcheck_rps": 2,
+    "jupiter_rps": 5,
+    "llm_rpm": 20
+  }
+}

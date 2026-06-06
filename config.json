@@ -1,0 +1,216 @@
+{
+  "agent": {
+    "name": "TrenchAgent",
+    "mode": "live",
+    "paper_trading": true,
+    "log_level": "info"
+  },
+  "llm": {
+    "provider": "opencode",
+    "model": "MiniMax-M3-Free",
+    "base_url": "https://opencode.ai/zen/v1",
+    "temperature": 1,
+    "top_p": 0.95,
+    "max_tokens": 4096,
+    "timeout_ms": 30000,
+    "api_key": "PLACEHOLDER"
+  },
+  "wallet": {
+    "rpc_endpoint": "https://mainnet.helius-rpc.com/?api-key=",
+    "rpc_fallbacks": [
+      "https://api.mainnet-beta.solana.com",
+      "https://rpc.shyft.to/?x-api-key="
+    ],
+    "use_devnet": false,
+    "priority_fee_lamports": 10000,
+    "sub_wallets_enabled": true,
+    "sub_wallet_rotation": "per_trade",
+    "sub_wallet_fund_amount_sol": 0.1,
+    "use_jito": true,
+    "jito_tip_lamports": 10000,
+    "private_key": "PLACEHOLDER_WALLET_KEY_BASE58_PLACEHOLDER_88chars_xxxxxxxxxxxxxxxxxxxxxxxxx"
+  },
+  "position": {
+    "size_sol": 0.02,
+    "max_concurrent": 1,
+    "monitor_interval_ms": 10000,
+    "snapshot_interval_ms": 300000,
+    "conviction_tiers": {
+      "low": {
+        "max_multiplier": 0.5,
+        "min_confidence": 0.6
+      },
+      "medium": {
+        "max_multiplier": 1,
+        "min_confidence": 0.75
+      },
+      "high": {
+        "max_multiplier": 1.5,
+        "min_confidence": 0.88
+      }
+    },
+    "max_concurrent_positions": 3,
+    "hard_stop_loss_pct": -20
+  },
+  "hard_rules": {
+    "min_liquidity_usd": 2000,
+    "max_liquidity_usd": 500000,
+    "min_holder_count": 30,
+    "min_holders": 30,
+    "max_dev_wallet_pct": 35,
+    "min_rugcheck_score": 70,
+    "block_bundled_launch": true,
+    "block_mintable": true,
+    "block_freezable": true,
+    "max_loss_sol_per_trade": 0.05,
+    "max_total_exposure_sol": 0.5,
+    "cooldown_after_consecutive_losses": 3,
+    "cooldown_duration_minutes": 30,
+    "hard_stop_loss_pct": -20,
+    "take_profit_pct": 40,
+    "max_daily_loss_sol": 0.2,
+    "max_daily_trades": 20
+  },
+  "tp_sl": {
+    "initial_tp_pct": 50,
+    "initial_sl_pct": 20,
+    "trailing_enabled": true,
+    "trailing_trigger_pct": 30,
+    "trailing_distance_pct": 15,
+    "dynamic_adjustment_enabled": true,
+    "max_sl_widen_pct": 10,
+    "emergency_exit_triggers": {
+      "dev_dump_threshold_pct": 20,
+      "liquidity_drop_pct": 30,
+      "holder_drop_pct": 15
+    }
+  },
+  "feeds": {
+    "gmgn": {
+      "enabled": true,
+      "poll_interval_ms": 30000,
+      "streams": ["trending_5m", "new_creation", "near_graduation", "kol_new"]
+    },
+    "pumpfun": {
+      "enabled": false,
+      "_deprecated": "use feeds.gmgn (see feeds/gmgn.js)",
+      "min_initial_buy_sol": 1
+    },
+    "screener": {
+      "enabled": false,
+      "_deprecated": "use feeds.gmgn (see feeds/gmgn.js)",
+      "providers": ["dexscreener", "gmgn"],
+      "poll_interval_ms": 30000,
+      "filters": {
+        "min_volume_1h_usd": 10000,
+        "min_price_change_1h_pct": 20,
+        "max_age_minutes": 120
+      }
+    },
+    "telegram": {
+      "enabled": true,
+      "session_file": "./telegram.session",
+      "groups": [
+        "@signalsolanaby4am",
+        "@spidersjournal",
+        "@spidersdegens",
+        "@CallAnalyser",
+        "@dextradegems",
+        "@lowtaxsolana",
+        "@parkersdiary",
+        "@CryptoDeusGems",
+        "@GemHuntingSolana",
+        "@pumpfunbondingtracker",
+        "@degensgems",
+        "@Archerrgambles",
+        "@ecasniper",
+        "@mad_apes_gambles",
+        "@TheBlockchainGods"
+      ],
+      "llm_filter_enabled": true,
+      "min_confidence_score": 0.7
+    },
+    "twitter": {
+      "enabled": true,
+      "keywords": [
+        "solana",
+        "sol",
+        "meme",
+        "pump",
+        "gem",
+        "100x"
+      ],
+      "accounts": [],
+      "poll_interval_ms": 60000,
+      "max_tweet_age_minutes": 30
+    }
+  },
+  "analysis": {
+    "onchain": {
+      "check_dev_wallet": true,
+      "check_top_holders": true,
+      "top_holders_count": 10,
+      "check_insider_wallets": true
+    },
+    "monitor_interval_ms": 15000
+  },
+  "memory": {
+    "rag": {
+      "enabled": true,
+      "top_k_results": 5,
+      "similarity_threshold": 0.75,
+      "index_path": "./memory/db/vector-index"
+    },
+    "ledger": {
+      "enabled": true,
+      "db_path": "./memory/db/trades.db",
+      "stats_lookback_trades": 50
+    }
+  },
+  "backtest": {
+    "enabled": true,
+    "data_source": "gmgn",
+    "lookback_days": 3,
+    "min_liquidity_usd": 1000,
+    "min_holders": 10,
+    "starting_balance_sol": 10,
+    "default_position_size_sol": 0.05,
+    "output_path": "./backtest/results"
+  },
+  "gmgn": {
+    "enabled": true,
+    "api_key_env": "GMGN_API_KEY",
+    "intervals": ["5m"],
+    "platforms": ["Pump.fun"],
+    "include_near_graduation": true,
+    "include_kol_bought": true,
+    "poll_interval_ms": 30000
+  },
+  "rate_limits": {
+    "helius_rps": 10,
+    "gmgn_rps": 1,
+    "rugcheck_rps": 2,
+    "jupiter_rps": 5,
+    "llm_rpm": 20
+  },
+  "circuit_breaker": {
+    "enabled": true,
+    "notify_telegram": true,
+    "reset_hour_utc": 0
+  },
+  "backup": {
+    "enabled": true,
+    "interval_minutes": 60,
+    "include_files": [
+      "./telegram.session",
+      "./memory/db/trades.db",
+      "./memory/db/vector-index",
+      "./config.json"
+    ]
+  },
+  "dashboard": {
+    "enabled": true,
+    "port": 3000,
+    "auth_token": "change_this_token"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "memory": {
+    "ledger": {
+      "db_path": "/home/elzanom/work/trench/solana-trench-agent/tests/test-memory.db"
+    },
+    "rag": {
+      "index_path": "/home/elzanom/work/trench/solana-trench-agent/tests/test-rag-index"
+    }
+  }
+}

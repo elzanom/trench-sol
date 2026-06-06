@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TrenchAgent Dashboard</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<div class="dashboard">
+
+  <!-- Header -->
+  <header class="header">
+    <div class="header-left">
+      <h1 class="agent-name">TrenchAgent</h1>
+      <span id="status-badge" class="badge badge-running">RUNNING</span>
+      <span id="paper-badge" class="badge badge-paper" style="display:none">🟡 PAPER</span>
+    </div>
+    <div class="header-right">
+      <span id="wallet-address" class="wallet-address">Loading...</span>
+      <span id="wallet-balance" class="wallet-balance">-- SOL</span>
+    </div>
+  </header>
+
+  <!-- Circuit Breaker Card -->
+  <section class="card cb-card">
+    <h2>⚡ Circuit Breaker</h2>
+    <div class="cb-status">
+      <span class="cb-label">Status:</span>
+      <span id="cb-status-value" class="cb-value">--</span>
+    </div>
+    <div class="cb-stats">
+      <div class="cb-stat">
+        <span class="cb-label">Daily Loss</span>
+        <span id="cb-daily-loss" class="cb-value cb-loss">--</span>
+      </div>
+      <div class="cb-stat">
+        <span class="cb-label">Trades Today</span>
+        <span id="cb-trade-count" class="cb-value">--</span>
+      </div>
+      <div class="cb-stat">
+        <span class="cb-label">Max Loss</span>
+        <span id="cb-max-loss" class="cb-value">--</span>
+      </div>
+    </div>
+    <button id="cb-reset-btn" class="btn btn-danger" disabled>Reset CB</button>
+  </section>
+
+  <!-- Stats Cards Row -->
+  <section class="stats-row">
+    <div class="card stat-card">
+      <span class="stat-label">Total P&L</span>
+      <span id="stat-total-pnl" class="stat-value">--</span>
+    </div>
+    <div class="card stat-card">
+      <span class="stat-label">Win Rate</span>
+      <span id="stat-win-rate" class="stat-value">--%</span>
+    </div>
+    <div class="card stat-card">
+      <span class="stat-label">Active Positions</span>
+      <span id="stat-active-pos" class="stat-value">--</span>
+    </div>
+    <div class="card stat-card">
+      <span class="stat-label">Total Trades</span>
+      <span id="stat-total-trades" class="stat-value">--</span>
+    </div>
+  </section>
+
+  <!-- Sub-wallets Panel -->
+  <section class="card">
+    <h2>💼 Sub-Wallets</h2>
+    <div id="sub-wallets-list" class="sub-wallets-list">
+      <span class="loading">Loading...</span>
+    </div>
+  </section>
+
+  <!-- Active Positions Table -->
+  <section class="card">
+    <h2>📊 Active Positions</h2>
+    <div class="table-wrap">
+      <table id="positions-table" class="data-table">
+        <thead>
+          <tr>
+            <th>Mode</th>
+            <th>Symbol</th>
+            <th>Entry Price</th>
+            <th>Current Price</th>
+            <th>P&L %</th>
+            <th>TP</th>
+            <th>SL</th>
+            <th>Duration</th>
+            <th>Wallet</th>
+          </tr>
+        </thead>
+        <tbody id="positions-body">
+          <tr><td colspan="9" class="loading">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- PnL Chart -->
+  <section class="card">
+    <h2>📈 Cumulative P&L (Last 30 Trades)</h2>
+    <div class="chart-wrap">
+      <canvas id="pnl-chart"></canvas>
+    </div>
+  </section>
+
+  <!-- Signal Accuracy Table -->
+  <section class="card">
+    <h2>🎯 Signal Accuracy</h2>
+    <div class="table-wrap">
+      <table id="signal-table" class="data-table">
+        <thead>
+          <tr>
+            <th>Signal</th>
+            <th>Trades</th>
+            <th>Wins</th>
+            <th>Win Rate</th>
+            <th>Avg P&L%</th>
+          </tr>
+        </thead>
+        <tbody id="signal-body">
+          <tr><td colspan="5" class="loading">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Performance by Source -->
+  <section class="card">
+    <h2>📊 Performance by Source</h2>
+    <div class="table-wrap">
+      <table id="source-table" class="data-table">
+        <thead>
+          <tr>
+            <th>Source</th>
+            <th>Trades</th>
+            <th>Wins</th>
+            <th>Win Rate</th>
+            <th>Total PnL</th>
+          </tr>
+        </thead>
+        <tbody id="source-body">
+          <tr><td colspan="5" class="loading">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Controls -->
+  <section class="controls">
+    <button id="pause-btn" class="btn btn-warning">⏸ Pause</button>
+    <button id="resume-btn" class="btn btn-success" disabled>▶ Resume</button>
+    <button id="switch-paper-btn" class="btn btn-secondary" style="display:none">🟡 Switch to Paper</button>
+    <button id="switch-live-btn" class="btn btn-live" style="display:none">🟢 Switch to Live</button>
+    <span id="pnl-suffix" class="pnl-suffix" style="display:none">(simulated)</span>
+  </section>
+
+  <!-- Log Box -->
+  <section class="card log-card">
+    <h2>📋 Log Stream</h2>
+    <div id="log-box" class="log-box">
+      <pre id="log-content"></pre>
+    </div>
+  </section>
+
+</div><!-- .dashboard -->
+
+<script src="app.js"></script>
+</body>
+</html>
