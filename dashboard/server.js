@@ -220,10 +220,14 @@ export function buildApp() {
       let allTrades = Array.isArray(trades) ? trades : [];
 
       // Apply status filter (closed = has exit_time; open = no exit_time)
+      // 2026-06-07: relaxed check. recordTrade() now sets exit_time
+      // correctly, but legacy rows and any pre-existing data may still
+      // have exit_time: null. Filter by symbol presence as a sanity
+      // check that the row is a real trade record.
       if (statusFilter === 'closed') {
-        allTrades = allTrades.filter(t => t.exit_time != null);
+        allTrades = allTrades.filter(t => t.symbol && t.exit_time != null);
       } else if (statusFilter === 'open') {
-        allTrades = allTrades.filter(t => t.exit_time == null);
+        allTrades = allTrades.filter(t => t.symbol && t.exit_time == null);
       }
 
       // Paginate manually

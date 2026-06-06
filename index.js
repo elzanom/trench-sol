@@ -824,6 +824,8 @@ async function forceExit(position, reason, deps) {
       await recordTrade({
         token_address: position.token_address,
         symbol: position.symbol,
+        entry_time: position.entry_time ?? Date.now(),  // 2026-06-07: was missing
+        exit_time: Date.now(),  // 2026-06-07: was missing
         sub_wallet_index: position.sub_wallet_index,
         entry_price_usd: position.entry_price_usd,
         exit_price_usd: exitPriceUsd,
