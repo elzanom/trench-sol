@@ -242,7 +242,7 @@ async function refreshPositions() {
     const tbody = document.getElementById('positions-body');
 
     if (!data.positions?.length) {
-      tbody.innerHTML = '<tr><td colspan="9" class="loading">No active positions</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="10" class="loading">No active positions</td></tr>';
       return;
     }
 
@@ -252,7 +252,8 @@ async function refreshPositions() {
       const modeIcon = pos.source === 'paper' ? '🟡 P' : (pos.source === 'live' ? '🟢 L' : '⚪ ?');
       return `<tr>
         <td>${modeIcon}</td>
-        <td><strong>${escHtml(pos.symbol || '?')}</strong></td>
+        <td>${renderTokenLink(pos.symbol, pos.token_address)}</td>
+        <td>${formatMC(pos.entry_market_cap_usd)}</td>
         <td>$${pos.entry_price_usd?.toFixed(6) ?? '--'}</td>
         <td>${pos.current_price_usd ? '$' + pos.current_price_usd.toFixed(6) : '--'}</td>
         <td class="${pnlClass}">${pnlSign}${pos.pnl_pct?.toFixed(2) ?? '--'}%</td>
@@ -531,7 +532,7 @@ async function refreshTrades() {
     const trades = (data.trades || []).filter(t => t.exit_time != null);
 
     if (!trades.length) {
-      tbody.innerHTML = '<tr><td colspan="7" class="loading">No closed trades yet</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" class="loading">No closed trades yet</td></tr>';
       return;
     }
 
@@ -547,7 +548,8 @@ async function refreshTrades() {
       const exitTime = t.exit_time ? new Date(t.exit_time).toLocaleString() : '--';
       const dur = t.hold_duration_minutes != null ? formatDuration(t.hold_duration_minutes) : '--';
       return `<tr>
-        <td><strong>${escHtml(t.symbol || '?')}</strong></td>
+        <td>${renderTokenLink(t.symbol, t.token_address)}</td>
+        <td>${formatMC(t.entry_market_cap_usd)}</td>
         <td>${modeIcon}</td>
         <td class="${pnlClass}">${pnlSign}${pnlPct.toFixed(2)}%</td>
         <td class="${pnlClass}">${pnlSign}${pnlSol.toFixed(4)}</td>
@@ -655,6 +657,37 @@ function formatDuration(minutes) {
   if (minutes < 60) return minutes + 'm';
   if (minutes < 1440) return Math.floor(minutes / 60) + 'h';
   return Math.floor(minutes / 1440) + 'd';
+}
+
+// 2026-06-07: render token symbol as a clickable GMGN link with abbreviated
+// address below. Falls back to plain symbol if address is missing (e.g. legacy
+// trade record from before token_address was populated).
+function renderTokenLink(symbol, tokenAddress) {
+  const sym = escHtml(symbol || '?');
+  if (!tokenAddress) {
+    return `<strong>${sym}</strong>`;
+  }
+  const abbrev = tokenAddress.length > 12
+    ? `${tokenAddress.slice(0, 6)}...${tokenAddress.slice(-4)}`
+    : tokenAddress;
+  return `<a href="https://gmgn.ai/sol/token/${escHtml(tokenAddress)}"
+             target="_blank" rel="noopener noreferrer"
+             style="color: inherit; text-decoration: none;">
+            <strong>${sym}</strong>
+            <span style="font-size: 10px; color: #475569; margin-left: 4px;">↗</span>
+          </a>
+          <div style="font-size: 10px; color: #334155; font-family: monospace; margin-top: 2px;">
+            ${escHtml(abbrev)}
+          </div>`;
+}
+
+// 2026-06-07: format market cap with B/M/k suffix for compact display.
+function formatMC(usd) {
+  if (!usd || usd === 0) return '--';
+  if (usd >= 1e9) return '$' + (usd / 1e9).toFixed(2) + 'B';
+  if (usd >= 1e6) return '$' + (usd / 1e6).toFixed(2) + 'M';
+  if (usd >= 1e3) return '$' + (usd / 1e3).toFixed(1) + 'k';
+  return '$' + Math.round(usd);
 }
 
 // ─── Init ─────────────────────────────────────────────────────────────────────

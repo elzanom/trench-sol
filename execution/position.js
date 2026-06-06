@@ -116,6 +116,7 @@ export async function openPosition(data) {
     amount_sol: data.amount_sol,
     entry_price: data.entry_price ?? data.entry_price_usd ?? null,
     entry_price_usd: data.entry_price_usd ?? null,
+    entry_market_cap_usd: data.entry_market_cap_usd ?? data.market_cap ?? null,  // 2026-06-07
     entry_time: Date.now(),
     stop_loss_pct: data.stop_loss_pct ?? data.hard_stop_loss_pct ?? null,
     take_profit_pct: data.take_profit_pct || null,

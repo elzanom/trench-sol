@@ -138,6 +138,12 @@ function getDb() {
     _db.exec("ALTER TABLE trades ADD COLUMN feed_source TEXT DEFAULT NULL");
   } catch (e) { /* column already exists, skip */ }
 
+  // 2026-06-07: ensure entry_market_cap_usd column exists (for MC Entry column
+  // in dashboard). Older DBs don't have it — migration adds nullable REAL.
+  try {
+    _db.exec("ALTER TABLE trades ADD COLUMN entry_market_cap_usd REAL DEFAULT NULL");
+  } catch (e) { /* column already exists, skip */ }
+
   _db.exec(`
     CREATE TABLE IF NOT EXISTS daily_stats (
       date TEXT PRIMARY KEY,
@@ -203,8 +209,8 @@ export async function recordTrade(tradeData) {
     : (tradeData.signal_tags || null);
 
   db.prepare(`
-    INSERT OR REPLACE INTO trades (id, token_address, symbol, side, sub_wallet_index, amount_sol, amount_sol_invested, price, pnl_sol, pnl_pct, timestamp, entry_time, exit_time, signal, entry_price, exit_price, confidence, conviction, exit_reason, signal_tags, entry_reasoning, llm_confidence, hold_duration_minutes, source, feed_source)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT OR REPLACE INTO trades (id, token_address, symbol, side, sub_wallet_index, amount_sol, amount_sol_invested, price, pnl_sol, pnl_pct, timestamp, entry_time, exit_time, signal, entry_price, exit_price, confidence, conviction, exit_reason, signal_tags, entry_reasoning, llm_confidence, hold_duration_minutes, source, feed_source, entry_market_cap_usd)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     token_address,
@@ -230,7 +236,8 @@ export async function recordTrade(tradeData) {
     tradeData.llm_confidence ?? null,
     tradeData.hold_duration_minutes ?? null,
     tradeData.source ?? 'live',
-    tradeData.feed_source ?? null
+    tradeData.feed_source ?? null,
+    tradeData.entry_market_cap_usd ?? null   // 2026-06-07: MC at entry time
   );
 
   return { id, success: true, symbol: tradeData.symbol ?? null };
@@ -405,6 +412,7 @@ export async function getRecentPerformance(limit = 10) {
     pnl_pct: t.pnl_pct,
     exit_reason: t.exit_reason,
     hold_duration_minutes: t.hold_duration_minutes,
+    entry_market_cap_usd: t.entry_market_cap_usd,  // 2026-06-07: for MC Entry column
     entry_time: t.entry_time,
     exit_time: t.exit_time,
     timestamp: t.timestamp,

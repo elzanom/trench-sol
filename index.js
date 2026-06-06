@@ -603,6 +603,7 @@ async function handleToken(token, deps) {
       symbol,
       sub_wallet_index: subWallet.index,
       entry_price_usd: result.entryPriceUsd || tokenData.price_usd || 0,
+      entry_market_cap_usd: tokenData.market_cap ?? null,  // 2026-06-07
       amount_sol: finalAmount,
       hard_stop_loss_pct: config.position?.hard_stop_loss_pct ?? 20,
       take_profit_pct: entryParams.take_profit_pct ?? null,
@@ -836,6 +837,7 @@ async function forceExit(position, reason, deps) {
         hold_duration_minutes: closed.hold_duration_minutes || 0,
         source: isPaperMode ? 'paper' : 'live',
         feed_source: position.feed_source || null,
+        entry_market_cap_usd: position.entry_market_cap_usd ?? null,  // 2026-06-07
       });
     } catch (err) {
       log.warn('ledger', `Failed to record trade: ${err.message}`);
