@@ -374,23 +374,42 @@ export async function getSignalAccuracy() {
 }
 
 /**
- * Get recent performance (last N trades)
+ * Get recent performance (last N closed trades).
+ * Returns full record so dashboard can render trade history table.
+ * 2026-06-06: added symbol, source, entry/exit_price_usd, pnl_pct,
+ * exit_reason, hold_duration_minutes, exit_time. ORDER BY exit_time
+ * DESC (NULLS LAST) so closed trades appear before open ones.
  */
 export async function getRecentPerformance(limit = 10) {
   const db = getDb();
 
   const trades = db.prepare(
-    'SELECT * FROM trades ORDER BY entry_time DESC, timestamp DESC LIMIT ?'
+    `SELECT * FROM trades
+     ORDER BY exit_time DESC NULLS LAST, entry_time DESC, timestamp DESC
+     LIMIT ?`
   ).all(limit);
 
   return trades.map(t => ({
     id: t.id,
-    mint_address: t.mint_address,
+    symbol: t.symbol,
     side: t.side,
+    source: t.source || 'unknown',
+    feed_source: t.feed_source || null,
+    sub_wallet_index: t.sub_wallet_index,
+    token_address: t.token_address,
     amount_sol: t.amount_sol,
+    amount_sol_invested: t.amount_sol_invested,
+    entry_price_usd: t.entry_price,
+    exit_price_usd: t.exit_price,
     pnl_sol: t.pnl_sol,
-    timestamp: t.timestamp,
+    pnl_pct: t.pnl_pct,
+    exit_reason: t.exit_reason,
+    hold_duration_minutes: t.hold_duration_minutes,
     entry_time: t.entry_time,
+    exit_time: t.exit_time,
+    timestamp: t.timestamp,
+    conviction: t.conviction,
+    confidence: t.confidence,
     signal_tags: t.signal_tags ? JSON.parse(t.signal_tags) : null,
   }));
 }
