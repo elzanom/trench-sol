@@ -189,6 +189,7 @@ export function buildApp() {
           duration_minutes: durationMin,
           source: pos.source,
           signal_tags: pos.signal_tags || [],
+          entry_market_cap_usd: pos.entry_market_cap_usd ?? null,  // 2026-06-07
         };
       }));
 

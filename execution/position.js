@@ -90,6 +90,7 @@ function loadExistingPositions() {
           pnl_sol: trade.pnl_sol || 0,
           signal: trade.signal,
           sub_wallet_index: 0,
+          entry_market_cap_usd: null,  // 2026-06-07: not persisted, will fetch on next open
         });
       }
     }
