@@ -251,17 +251,20 @@ export async function sellToken(keypair, mintAddress, amountPct = 100, options =
 
   // Compute tokens sold and SOL received
   //
-  // If we have entry info (realistic):
-  //   tokenAmount = (amountSol / entryPriceUsd) * (amountPct / 100)
-  //   solReceived = tokenAmount * exitPriceUsd
+  // 2026-06-07: BUG 2-latent fix — old formula `tokensHeld = amountSol / entryPriceUsd`
+  // treated SOL as USD (unit error). Replaced with ratio-based math that is unitless
+  // (USD-per-token / USD-per-token = dimensionless) — works without SOL/USD price feed.
   //
+  // If we have entry info (realistic):
+  //   priceRatio = exitPriceUsd / entryPriceUsd
+  //   solReceived = amountSol × priceRatio × (1 - priceImpactPct/100)
   // If no entry info (fallback):
   //   Treat amountSol as a value-both-ways placeholder; the "loss" is just slippage.
   let amountIn, solReceived;
   if (entryPriceUsd && isValidPrice(entryPriceUsd) && amountSol > 0) {
-    const tokensHeld = amountSol / entryPriceUsd;
-    amountIn = tokensHeld * (amountPct / 100);
-    solReceived = amountIn * exitPriceUsd;
+    const priceRatio = exitPriceUsd / entryPriceUsd;  // unitless
+    amountIn = amountSol * (amountPct / 100);  // proportional SOL sold
+    solReceived = amountIn * priceRatio * (1 - priceImpactPct / 100);
   } else {
     // Fallback: simulate proportional SOL value
     amountIn = amountSol * (amountPct / 100);

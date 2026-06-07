@@ -483,15 +483,20 @@ async function handleToken(token, deps) {
   const activePositions = await positionManager.getActivePositions();
   const dailyStats = await circuitBreaker.getDailyStats();
 
-  // Count consecutive losses from ledger
+  // Count consecutive losses from ledger (2026-06-07: walk backward from most recent)
   let consecutiveLosses = 0;
+  let lastLossTime = null;  // 2026-06-07: BUG 1 fix — checkCooldown needs this to verify cooldown elapsed
   try {
     const { getRecentPerformance } = await import('./memory/ledger.js');
-    const recent = await getRecentPerformance(5);
+    const recent = await getRecentPerformance(20);  // wider window for accurate consecutive count
     const lastTrades = Array.isArray(recent) ? recent : [];
-    const lastFive = lastTrades.slice(0, 5);
-    if (lastFive.length > 0 && lastFive.every(t => t.pnl_sol < 0)) {
-      consecutiveLosses = lastFive.length;
+    for (const t of lastTrades) {
+      if (t.pnl_sol < 0) {
+        consecutiveLosses++;
+        if (lastLossTime === null && t.exit_time) lastLossTime = t.exit_time;  // most recent loss
+      } else {
+        break;  // 2026-06-07: stop at first non-loss (replaces overly-conservative `every()`)
+      }
     }
   } catch {}
 
@@ -501,6 +506,7 @@ async function handleToken(token, deps) {
   const context = {
     activePositions,
     consecutiveLosses,
+    lastLossTime,  // 2026-06-07: BUG 1 fix — was missing, caused agent stuck in cooldown
     totalExposureSol,
     dailyStats,
   };
@@ -863,9 +869,12 @@ async function forceExit(position, reason, deps) {
     });
 
     // Calculate PnL
+    // 2026-06-07: BUG 2 fix — previous formula `(exitPrice - entryPrice) * amount_sol` was dimensionally
+    // wrong (USD-per-token × SOL). Use percentage-based: pnl_sol = pnl_pct/100 × amount_sol.
+    // Also moved pnlPct calculation up since pnlSol now depends on it.
     const exitPriceUsd = result.exitPriceUsd || position.entry_price_usd;
-    const pnlSol = (exitPriceUsd - position.entry_price_usd) * position.amount_sol;
     const pnlPct = calcPnl(position.entry_price_usd, exitPriceUsd);
+    const pnlSol = (pnlPct / 100) * position.amount_sol;
 
     // Record loss in circuit breaker if negative
     if (pnlSol < 0) {
