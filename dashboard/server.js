@@ -56,7 +56,7 @@ function authMiddleware(req, res, next) {
   next();
 }
 
-export function buildApp() {
+export function buildApp(state = null) {
   const app = express();
   app.use(express.json());
 
@@ -448,12 +448,14 @@ export function buildApp() {
   // ── POST /api/pause ──────────────────────────────────────────────────────────
   app.post('/api/pause', (req, res) => {
     isPaused = true;
+    if (state && typeof state.setPaused === 'function') state.setPaused(true);
     res.json({ success: true, status: 'PAUSED' });
   });
 
   // ── POST /api/resume ─────────────────────────────────────────────────────────
   app.post('/api/resume', (req, res) => {
     isPaused = false;
+    if (state && typeof state.setPaused === 'function') state.setPaused(false);
     res.json({ success: true, status: 'RUNNING' });
   });
 
@@ -468,15 +470,68 @@ export function buildApp() {
     }
   });
 
+  // ── GET /api/decisions ─────────────────────────────────────────────────────
+  app.get('/api/decisions', (req, res) => {
+    res.json({ decisions: state?.recentDecisions || [] });
+  });
+
+  // ── GET /api/rejections ───────────────────────────────────────────────────
+  app.get('/api/rejections', (req, res) => {
+    res.json(state?.rejectionStats || {});
+  });
+
+  // ── GET /api/feed-stats ───────────────────────────────────────────────────
+  app.get('/api/feed-stats', (req, res) => {
+    const fs = state?.feedStats || { gmgn_trending: 0, gmgn_new: 0, telegram: 0, twitter: 0 };
+    res.json(fs);
+  });
+
+  // ── GET /api/daily-summary ────────────────────────────────────────────────
+  app.get('/api/daily-summary', async (req, res) => {
+    try {
+      const { getDbInstance } = await import('../memory/ledger.js');
+      const db = getDbInstance();
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      const ts = todayStart.getTime();
+      const entered = db.prepare(
+        "SELECT COUNT(*) as c FROM trades WHERE entry_time >= ? AND source = 'paper'"
+      ).get(ts);
+      const closed = db.prepare(
+        "SELECT COUNT(*) as c FROM trades WHERE exit_time >= ? AND source = 'paper'"
+      ).get(ts);
+      const pnlRow = db.prepare(
+        "SELECT COALESCE(SUM(pnl_sol), 0) as net FROM trades WHERE exit_time >= ? AND source = 'paper'"
+      ).get(ts);
+      const bestRow = db.prepare(
+        "SELECT MAX(pnl_sol) as best FROM trades WHERE exit_time >= ? AND source = 'paper'"
+      ).get(ts);
+      const worstRow = db.prepare(
+        "SELECT MIN(pnl_sol) as worst FROM trades WHERE exit_time >= ? AND source = 'paper'"
+      ).get(ts);
+      const feedTotal = Object.values(state?.feedStats || {}).reduce((a, b) => a + b, 0);
+      res.json({
+        scanned: feedTotal,
+        entered: entered.c,
+        closed: closed.c,
+        net_pnl: pnlRow.net,
+        best: bestRow.best || 0,
+        worst: worstRow.worst || 0,
+      });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   return app;
 }
 
 // ─── Start server ──────────────────────────────────────────────────────────────
 
-export function startServer() {
+export function startServer(state) {
   const config = loadConfig();
   const port = config.dashboard?.port || 3000;
-  const app = buildApp();
+  const app = buildApp(state);
 
   app.listen(port, () => {
     console.log(`[dashboard] Server running on port ${port}`);

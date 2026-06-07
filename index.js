@@ -97,8 +97,43 @@ async function withBuyLock(fn) {
   const prev = buyLock;
   let release;
   buyLock = new Promise(r => { release = r; });
-  await prev;
   try { return await fn(); } finally { release(); }
+}
+
+// ─── Pause state (2026-06-07: dashboard Pause/Resume button) ────────────────
+let isPaused = false;
+export function setPaused(v) { isPaused = v; }
+export function getPaused() { return isPaused; }
+
+// ─── Dashboard state buffers (read by /api/decisions, /api/rejections,
+//      /api/feed-stats via dashboard/server.js) ─────────────────────────
+export const dashboardState = {
+  recentDecisions: [],   // circular buffer, max 10, newest first
+  rejectionStats: {},    // reason → count
+  feedStats: {           // source → count
+    gmgn_trending: 0,
+    gmgn_new: 0,
+    telegram: 0,
+    twitter: 0,
+  },
+};
+
+const MAX_DECISIONS = 10;
+
+export function pushDecision(dec) {
+  dashboardState.recentDecisions.unshift(dec);
+  if (dashboardState.recentDecisions.length > MAX_DECISIONS) {
+    dashboardState.recentDecisions.pop();
+  }
+}
+
+export function incrementRejection(reason) {
+  dashboardState.rejectionStats[reason] =
+    (dashboardState.rejectionStats[reason] || 0) + 1;
+}
+
+export function incrementFeedStat(source) {
+  dashboardState.feedStats[source] = (dashboardState.feedStats[source] || 0) + 1;
 }
 
 // ─── CLI args parsing ──────────────────────────────────────────────────────────
@@ -337,6 +372,17 @@ async function main() {
   if (aggregator) {
     aggregator.onToken(async (token) => {
       if (isShuttingDown) return;
+      if (isPaused) return;  // 2026-06-07: dashboard Pause — monitor positions still runs in main loop
+      // Track feed source for dashboard /api/feed-stats
+      if (token.signal_type === 'trending_5m') {
+        incrementFeedStat('gmgn_trending');
+      } else if (['new_creation', 'near_graduation', 'kol_new'].includes(token.signal_type)) {
+        incrementFeedStat('gmgn_new');
+      } else if (token.source === 'telegram') {
+        incrementFeedStat('telegram');
+      } else if (token.source === 'twitter') {
+        incrementFeedStat('twitter');
+      }
       await handleToken(token, {
         config, wallet, circuitBreaker, rateLimiter,
         brain, positionBrain, onchain, onchainSnapshot,
@@ -412,7 +458,10 @@ async function main() {
   // Start dashboard server in-process (no separate command needed)
   try {
     const { startServer: startDashboard } = await import('./dashboard/server.js');
-    startDashboard();
+    // Pass setters via state so dashboard endpoints can pause/resume
+    dashboardState.setPaused = (v) => { isPaused = v; };
+    dashboardState.getPaused = () => isPaused;
+    startDashboard(dashboardState);
   } catch (err) {
     log.warn('dashboard', `Failed to start dashboard: ${err.message}`);
   }
@@ -480,6 +529,15 @@ async function handleToken(token, deps) {
     hardRulesResult = await runAllChecks(tokenData, context);
     if (!hardRulesResult.passed) {
       log.info('skip', `${symbol}: ${hardRulesResult.failures.join(', ')}`);
+      // Categorize rejection for dashboard /api/rejections
+      for (const f of hardRulesResult.failures) {
+        let cat = 'other';
+        if (/dev_wallet/i.test(f)) cat = 'dev_wallet';
+        else if (/liquidity|liq/i.test(f)) cat = 'liq_missing';
+        else if (/honeypot/i.test(f)) cat = 'honeypot';
+        else if (/bundler/i.test(f)) cat = 'bundler';
+        incrementRejection(cat);
+      }
       return;
     }
   } catch (err) {
@@ -490,6 +548,7 @@ async function handleToken(token, deps) {
   // ── Circuit breaker ───────────────────────────────────────────────────────
   if (dailyStats.is_tripped) {
     log.info('skip', `${symbol}: circuit breaker tripped`);
+    incrementRejection('circuit_breaker');
     return;
   }
   // NOTE: max_concurrent check moved INSIDE withBuyLock (see below) to prevent
@@ -532,8 +591,20 @@ async function handleToken(token, deps) {
     activeLlmCalls--;
   }
 
+  // Record decision for dashboard /api/decisions
+  pushDecision({
+    symbol: symbol,
+    token_address: address,
+    decision: decision.decision,
+    confidence: decision.confidence || 0,
+    reasoning: decision.reasoning || decision.reason || '',
+    signal_tags: decision.signal_tags || decision.tags || [],
+    timestamp: Date.now(),
+  });
+
   if (decision.decision !== 'BUY') {
     log.info('decision', `${symbol}: ${decision.decision} (confidence ${(decision.confidence || 0).toFixed(2)})`);
+    incrementRejection('llm_skip');
     return;
   }
 

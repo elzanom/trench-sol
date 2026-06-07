@@ -4,214 +4,316 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>TrenchAgent Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 </head>
 <body>
 
-  <!-- Auth banner — shown only if token not in localStorage.
-       Replaces the 6-stacked-prompt() flow that caused "data not loading"
-       bugs (user dismisses prompt → no token saved → all 401s).
-       Server endpoint: GET/POST /api/token-check (no auth required). -->
-  <div id="auth-banner" class="auth-banner" style="display:none;">
+  <!-- Auth banner (overlay). Shown when no token in localStorage.
+       Inline replacement for the old stacked-prompt() flow. -->
+  <div id="auth-banner" class="auth-banner hidden">
     <div class="auth-banner-inner">
       <h3>🔒 Dashboard Token Required</h3>
-      <p id="auth-message">Enter the dashboard auth token to view live data.</p>
+      <p id="auth-message">Enter the dashboard auth token from config.json (dashboard.auth_token).</p>
       <div class="auth-form">
         <input type="password" id="auth-token-input" placeholder="Paste token from config.json" autocomplete="off" />
-        <button id="auth-submit-btn">Save &amp; Reload</button>
+        <button id="auth-submit-btn" type="button">Save &amp; Reload</button>
         <span id="auth-error" class="auth-error"></span>
       </div>
     </div>
   </div>
 
-<div class="dashboard" id="dashboard-content" style="display:none;">
+  <!-- Dashboard content (hidden until auth succeeds) -->
+  <div id="dashboard-content" class="hidden">
 
-  <!-- Header -->
-  <header class="header">
-    <div class="header-left">
-      <h1 class="agent-name">TrenchAgent</h1>
-      <span id="status-badge" class="badge badge-running">RUNNING</span>
-      <span id="paper-badge" class="badge badge-paper" style="display:none">🟡 PAPER</span>
+  <!-- Navbar (fixed top, 48px) -->
+  <nav class="navbar">
+    <div class="nav-left">
+      <span class="nav-logo">TrenchAgent</span>
+      <span id="status-badge" class="badge badge-green">RUNNING</span>
+      <span id="mode-badge" class="badge badge-yellow">PAPER</span>
+      <span class="nav-meta">
+        PID <span id="nav-pid">--</span> · uptime <span id="nav-uptime">--</span>
+      </span>
     </div>
-    <div class="header-right">
-      <span id="wallet-address" class="wallet-address">Loading...</span>
-      <span id="wallet-balance" class="wallet-balance">-- SOL</span>
+    <div class="nav-right">
+      <span class="nav-meta">main <span id="nav-main-bal">--</span> SOL</span>
+      <span class="nav-divider">|</span>
+      <span class="nav-meta">portfolio <span id="nav-portfolio-bal">--</span> SOL (<span id="nav-portfolio-pct">--</span>%)</span>
     </div>
-  </header>
+  </nav>
 
-  <!-- Circuit Breaker Card -->
-  <section class="card cb-card">
-    <h2>⚡ Circuit Breaker</h2>
-    <div class="cb-status">
-      <span class="cb-label">Status:</span>
-      <span id="cb-status-value" class="cb-value">--</span>
-    </div>
-    <div class="cb-stats">
-      <div class="cb-stat">
-        <span class="cb-label">Daily Loss</span>
-        <span id="cb-daily-loss" class="cb-value cb-loss">--</span>
+  <!-- Alert bar (hidden by default, shown when active pos PnL < -15%) -->
+  <div id="alert-bar" class="alert-bar hidden" role="alert"></div>
+
+  <!-- Main content wrapper -->
+  <main class="main-wrap">
+
+    <!-- Stats row (5 equal columns) -->
+    <section class="stats-row">
+      <div class="stat-card">
+        <span class="stat-label" id="stat-portfolio-label">Portfolio (Sim)</span>
+        <span id="stat-portfolio" class="stat-value">--</span>
+        <span id="stat-portfolio-sub" class="stat-sublabel"></span>
       </div>
-      <div class="cb-stat">
-        <span class="cb-label">Trades Today</span>
-        <span id="cb-trade-count" class="cb-value">--</span>
+      <div class="stat-card">
+        <span class="stat-label">Win Rate</span>
+        <span id="stat-winrate" class="stat-value">--%</span>
       </div>
-      <div class="cb-stat">
-        <span class="cb-label">Max Loss</span>
-        <span id="cb-max-loss" class="cb-value">--</span>
+      <div class="stat-card">
+        <span class="stat-label">Active Positions</span>
+        <span id="stat-active" class="stat-value">--</span>
       </div>
-    </div>
-    <button id="cb-reset-btn" class="btn btn-danger" disabled>Reset CB</button>
-  </section>
+      <div class="stat-card">
+        <span class="stat-label">Tokens Scanned</span>
+        <span id="stat-scanned" class="stat-value">--</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">RAG Memory</span>
+        <span id="stat-rag" class="stat-value">--</span>
+      </div>
+    </section>
 
-  <!-- Stats Cards Row -->
-  <section class="stats-row">
-    <div class="card stat-card">
-      <span class="stat-label" id="stat-total-pnl-label">Total P&L</span>
-      <span id="stat-total-pnl" class="stat-value">--</span>
-      <small class="stat-sublabel" id="stat-total-pnl-sub"></small>
-    </div>
-    <div class="card stat-card">
-      <span class="stat-label">Win Rate</span>
-      <span id="stat-win-rate" class="stat-value">--%</span>
-    </div>
-    <div class="card stat-card">
-      <span class="stat-label">Active Positions</span>
-      <span id="stat-active-pos" class="stat-value">--</span>
-    </div>
-    <div class="card stat-card">
-      <span class="stat-label">Total Trades</span>
-      <span id="stat-total-trades" class="stat-value">--</span>
-    </div>
-  </section>
+    <!-- Main 3-col grid (2fr 1fr 1fr) -->
+    <section class="main-grid">
 
-  <!-- Sub-wallets Panel -->
-  <section class="card">
-    <h2>💼 Sub-Wallets</h2>
-    <div id="sub-wallets-list" class="sub-wallets-list">
-      <span class="loading">Loading...</span>
-    </div>
-  </section>
+      <!-- LEFT col (2fr) -->
+      <div class="col-left">
 
-  <!-- Active Positions Table -->
-  <section class="card">
-    <h2>📊 Active Positions</h2>
-    <div class="table-wrap">
-      <table id="positions-table" class="data-table">
-        <thead>
-          <tr>
-            <th>Mode</th>
-            <th>Symbol</th>
-            <th>MC Entry</th>
-            <th>Entry Price</th>
-            <th>Current Price</th>
-            <th>P&L %</th>
-            <th>TP</th>
-            <th>SL</th>
-            <th>Duration</th>
-            <th>Wallet</th>
-          </tr>
-        </thead>
-        <tbody id="positions-body">
-          <tr><td colspan="10" class="loading">Loading...</td></tr>
-        </tbody>
-      </table>
-    </div>
-  </section>
+        <!-- Active positions -->
+        <div class="card">
+          <h2>
+            <span class="dot-live"></span>
+            Active Positions
+            <span class="header-meta"><span id="positions-count">0/0</span></span>
+          </h2>
+          <div class="table-wrap">
+            <table id="positions-table">
+              <thead>
+                <tr>
+                  <th>Token</th>
+                  <th>MC Entry</th>
+                  <th>Entry</th>
+                  <th>Now</th>
+                  <th>P&amp;L %</th>
+                  <th>SL</th>
+                  <th>Dur</th>
+                </tr>
+              </thead>
+              <tbody id="positions-body">
+                <tr><td colspan="7" class="text-muted text-center">No active positions</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
 
-  <!-- PnL Chart -->
-  <section class="card">
-    <h2>📈 Cumulative P&L (Last 30 Trades)</h2>
-    <div class="chart-wrap">
-      <canvas id="pnl-chart"></canvas>
-    </div>
-  </section>
+        <!-- LLM decision feed -->
+        <div class="card">
+          <h2>
+            LLM Decision Feed
+            <span class="badge badge-blue header-badge">real-time</span>
+          </h2>
+          <div id="decisions-list" class="decisions-list">
+            <div class="text-muted text-center">No decisions yet</div>
+          </div>
+        </div>
 
-  <!-- Trade History (Last 20 closed trades) -->
-  <section class="card">
-    <h2>📜 Trade History (Last 20)</h2>
-    <div class="table-wrap">
-      <table id="trades-table" class="data-table">
-        <thead>
-          <tr>
-            <th>Symbol</th>
-            <th>MC Entry</th>
-            <th>Mode</th>
-            <th>P&L %</th>
-            <th>P&L SOL</th>
-            <th>Exit Reason</th>
-            <th>Duration</th>
-            <th>Time</th>
-          </tr>
-        </thead>
-        <tbody id="trades-body">
-          <tr><td colspan="8" class="loading">Loading...</td></tr>
-        </tbody>
-      </table>
-    </div>
-  </section>
+        <!-- Trade history -->
+        <div class="card">
+          <h2>
+            Trade History
+            <span class="badge badge-blue header-badge">last 20</span>
+          </h2>
+          <div class="table-wrap">
+            <table id="trades-table">
+              <thead>
+                <tr>
+                  <th>Token</th>
+                  <th>MC Entry</th>
+                  <th>P&amp;L %</th>
+                  <th>P&amp;L SOL</th>
+                  <th>Exit Reason</th>
+                  <th>Dur</th>
+                </tr>
+              </thead>
+              <tbody id="trades-body">
+                <tr><td colspan="6" class="text-muted text-center">No closed trades yet</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <!-- Action row -->
+          <div class="action-row">
+            <button id="btn-pause" class="btn">⏸ Pause</button>
+            <button id="btn-resume" class="btn">▶ Resume</button>
+            <span class="spacer"></span>
+            <button id="btn-switch-live" class="btn btn-muted">Switch to Live</button>
+          </div>
+        </div>
 
-  <!-- Signal Accuracy Table -->
-  <section class="card">
-    <h2>🎯 Signal Accuracy</h2>
-    <div class="table-wrap">
-      <table id="signal-table" class="data-table">
-        <thead>
-          <tr>
-            <th>Signal</th>
-            <th>Trades</th>
-            <th>Wins</th>
-            <th>Win Rate</th>
-            <th>Avg P&L%</th>
-          </tr>
-        </thead>
-        <tbody id="signal-body">
-          <tr><td colspan="5" class="loading">Loading...</td></tr>
-        </tbody>
-      </table>
-    </div>
-  </section>
+      </div>
 
-  <!-- Performance by Source -->
-  <section class="card">
-    <h2>📊 Performance by Source</h2>
-    <div class="table-wrap">
-      <table id="source-table" class="data-table">
-        <thead>
-          <tr>
-            <th>Source</th>
-            <th>Trades</th>
-            <th>Wins</th>
-            <th>Win Rate</th>
-            <th>Total PnL</th>
-          </tr>
-        </thead>
-        <tbody id="source-body">
-          <tr><td colspan="5" class="loading">Loading...</td></tr>
-        </tbody>
-      </table>
-    </div>
-  </section>
+      <!-- MIDDLE col (1fr) -->
+      <div class="col-mid">
 
-  <!-- Controls -->
-  <section class="controls">
-    <button id="pause-btn" class="btn btn-warning">⏸ Pause</button>
-    <button id="resume-btn" class="btn btn-success" disabled>▶ Resume</button>
-    <button id="switch-paper-btn" class="btn btn-secondary" style="display:none">🟡 Switch to Paper</button>
-    <button id="switch-live-btn" class="btn btn-live" style="display:none">🟢 Switch to Live</button>
-    <span id="pnl-suffix" class="pnl-suffix" style="display:none">(simulated)</span>
-  </section>
+        <!-- Daily summary -->
+        <div class="card">
+          <h2>Daily Summary</h2>
+          <div class="daily-grid">
+            <div class="daily-cell">
+              <span class="daily-label">Scanned</span>
+              <span id="daily-scanned" class="daily-value">--</span>
+            </div>
+            <div class="daily-cell">
+              <span class="daily-label">Entered</span>
+              <span id="daily-entered" class="daily-value">--</span>
+            </div>
+            <div class="daily-cell">
+              <span class="daily-label">Closed</span>
+              <span id="daily-closed" class="daily-value">--</span>
+            </div>
+            <div class="daily-cell">
+              <span class="daily-label">Net P&amp;L</span>
+              <span id="daily-net" class="daily-value">--</span>
+            </div>
+            <div class="daily-cell">
+              <span class="daily-label">Best</span>
+              <span id="daily-best" class="daily-value text-green">--</span>
+            </div>
+            <div class="daily-cell">
+              <span class="daily-label">Worst</span>
+              <span id="daily-worst" class="daily-value text-red">--</span>
+            </div>
+          </div>
+        </div>
 
-  <!-- Log Box -->
-  <section class="card log-card">
-    <h2>📋 Log Stream</h2>
-    <div id="log-box" class="log-box">
-      <pre id="log-content"></pre>
-    </div>
-  </section>
+        <!-- Circuit breaker -->
+        <div class="card">
+          <h2>
+            Circuit Breaker
+            <button id="cb-reset-btn" class="btn btn-muted btn-tiny">reset</button>
+          </h2>
+          <div class="cb-row">
+            <div class="cb-label-row">
+              <span class="cb-label">Daily loss</span>
+              <span id="cb-loss-text" class="cb-value">--/--</span>
+            </div>
+            <div class="progress">
+              <div id="cb-loss-bar" class="progress-bar progress-loss" style="width:0%"></div>
+            </div>
+          </div>
+          <div class="cb-row">
+            <div class="cb-label-row">
+              <span class="cb-label">Trades</span>
+              <span id="cb-trades-text" class="cb-value">--/--</span>
+            </div>
+            <div class="progress">
+              <div id="cb-trades-bar" class="progress-bar progress-trades" style="width:0%"></div>
+            </div>
+          </div>
+        </div>
 
-</div><!-- .dashboard -->
+        <!-- Rejection breakdown -->
+        <div class="card">
+          <h2>Rejection Breakdown</h2>
+          <div id="rejections-list" class="bars-list">
+            <div class="text-muted text-center">No rejections</div>
+          </div>
+        </div>
 
-<script src="app.js"></script>
+        <!-- Signal accuracy -->
+        <div class="card">
+          <h2>Signal Accuracy</h2>
+          <div id="signal-list" class="bars-list">
+            <div class="text-muted text-center">No signal data</div>
+          </div>
+        </div>
+
+        <!-- Performance by source -->
+        <div class="card">
+          <h2>Performance by Source</h2>
+          <table id="source-table">
+            <thead>
+              <tr>
+                <th>Source</th>
+                <th>Trades</th>
+                <th>Win %</th>
+                <th>Total PnL</th>
+              </tr>
+            </thead>
+            <tbody id="source-body">
+              <tr><td colspan="4" class="text-muted text-center">No data</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+
+      <!-- RIGHT col (1fr) -->
+      <div class="col-right">
+
+        <!-- Feed sources -->
+        <div class="card">
+          <h2>Feed Sources</h2>
+          <div id="feed-stats-list" class="bars-list">
+            <div class="text-muted text-center">No data</div>
+          </div>
+        </div>
+
+        <!-- RAG learning -->
+        <div class="card">
+          <h2>RAG Learning</h2>
+          <div class="rag-stats">
+            <div class="rag-row">
+              <span class="rag-label">trades indexed</span>
+              <span id="rag-indexed" class="rag-value">--</span>
+            </div>
+            <div class="rag-row">
+              <span class="rag-label">avg match/decision</span>
+              <span id="rag-match-avg" class="rag-value">--</span>
+            </div>
+            <div class="rag-row">
+              <span class="rag-label">last match</span>
+              <span id="rag-last-match" class="rag-value">--</span>
+            </div>
+            <div class="rag-row">
+              <span class="rag-label">conf boost avg</span>
+              <span id="rag-conf-boost" class="rag-value">--</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sub-wallets -->
+        <div class="card">
+          <h2>Sub-Wallets</h2>
+          <div id="wallets-list" class="wallets-list">
+            <div class="text-muted text-center">No wallet data</div>
+          </div>
+        </div>
+
+        <!-- Config quick edit -->
+        <div class="card">
+          <h2>Config Quick Edit</h2>
+          <div id="config-pills" class="config-pills">
+            <div class="text-muted text-center">Loading config…</div>
+          </div>
+        </div>
+
+        <!-- Live log -->
+        <div class="card">
+          <h2>Live Log</h2>
+          <div id="log-output" class="log-output"></div>
+        </div>
+
+      </div>
+
+    </section>
+
+  </main>
+
+  </div><!-- #dashboard-content -->
+
+  <script src="app.js"></script>
 </body>
 </html>
