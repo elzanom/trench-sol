@@ -320,6 +320,17 @@ async function main() {
         log.warn('feeds', `gmgn wire failed: ${e.message}`);
       }
     }
+    // ── Telegram feed ────────────────────────────────────────────────────
+    if (config.feeds?.telegram?.enabled) {
+      try {
+        const { createTelegramFeed } = await import('./feeds/telegram.js');
+        const tg = createTelegramFeed(config);
+        aggregator.addSource(tg);
+        log.info('feeds', `Wired: telegram (${config.feeds.telegram.groups.length} groups)`);
+      } catch (e) {
+        log.warn('feeds', `telegram wire failed: ${e.message}`);
+      }
+    }
     // Legacy: pumpfun + screener disabled (see config.json)
     // Original blocks kept here for rollback reference:
     //   if (config.feeds?.pumpfun?.enabled !== false) { ... feeds/pumpfun.js ... }
