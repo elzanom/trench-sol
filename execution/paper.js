@@ -71,7 +71,7 @@ const _execFileP = (...args) => {
  */
 async function fetchGmgnPrice(mintAddress) {
   await acquire('gmgn');
-  const { stdout } = await _execFileP('gmgn-cli', [
+  const { stdout } = await _execFileP(process.env.GMGN_CLI_PATH || '/home/elzanom/.npm-global/bin/gmgn-cli', [
     'token', 'info',
     '--chain', 'sol',
     '--address', mintAddress,

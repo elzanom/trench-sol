@@ -67,7 +67,7 @@ async function runGmgn(args) {
   await acquire('gmgn');
   await waitForGmgnCooldown();
   try {
-    const { stdout } = await execFileP('gmgn-cli', args, {
+    const { stdout } = await execFileP(process.env.GMGN_CLI_PATH || '/home/elzanom/.npm-global/bin/gmgn-cli', args, {
       timeout: 20_000,
       maxBuffer: 10 * 1024 * 1024,
       env: { ...process.env, GMGN_API_KEY: process.env.GMGN_API_KEY },
