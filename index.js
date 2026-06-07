@@ -398,7 +398,7 @@ async function main() {
     if (isShuttingDown) return;
     await runPositionMonitor({
       config, circuitBreaker, positionBrain, onchain,
-      executor, positionManager, wallet, log,
+      executor, positionManager, wallet, log, rag,
       isPaperMode,
     });
   }, monitorIntervalMs);
