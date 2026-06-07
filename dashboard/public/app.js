@@ -356,18 +356,21 @@ async function refreshStats() {
     if (ragEl) ragEl.textContent = stats.total_trades ?? 0;
 
     // ── Signal accuracy: bars in #signal-list ─────────────────────────
+    // 2026-06-07: BUG fix — backend returns signal_accuracy as OBJECT (key=tag, value=stats),
+    // not array. Use Object.entries() to iterate.
     const signalList = document.getElementById('signal-list');
     if (signalList) {
-      const signals = stats.signal_accuracy || [];
-      if (!signals.length) {
+      const signals = stats.signal_accuracy || {};
+      const entries = Object.entries(signals);
+      if (!entries.length) {
         signalList.innerHTML = '<div class="text-muted text-center">No signal data</div>';
       } else {
-        const top = signals.slice(0, 8);
-        signalList.innerHTML = top.map(s => {
+        const top = entries.slice(0, 8);
+        signalList.innerHTML = top.map(([tag, s]) => {
           const wr = parseFloat(s.win_rate) || 0;
           const cls = wr > 70 ? 'blue' : wr >= 50 ? 'green' : wr >= 30 ? 'yellow' : 'red';
           return `<div class="bar-row">
-            <span class="bar-label">${escHtml(s.signal || '?')}</span>
+            <span class="bar-label">${escHtml(tag)}</span>
             <div class="bar-track"><div class="bar-fill ${cls}" style="width:${Math.min(100, wr).toFixed(1)}%"></div></div>
             <span class="bar-value">${wr.toFixed(0)}%</span>
           </div>`;
