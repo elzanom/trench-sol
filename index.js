@@ -4,6 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
 import { createLogger } from './core/logger.js';
+import { sendNotification, formatAgentStart, formatTradeOpen, formatTradeClose, formatCircuitBreaker, formatDailySummary } from './core/notifier.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -378,6 +379,70 @@ async function main() {
       log.error('feeds', `Failed to start: ${err.message}`);
     }
   }
+
+  // ── Notify: agent started ─────────────────────────────────────────────
+  const tgGroups = config.feeds?.telegram?.groups?.length || 0;
+  const walletAddr = config.wallet?.public_key || process.env.WALLET_PUBLIC_KEY || 'unknown';
+  sendNotification(formatAgentStart({
+    walletAddress: walletAddr,
+    telegramGroups: tgGroups,
+  }), { event: 'agent_start' }).catch(() => {});
+
+  // ── Daily summary timer ────────────────────────────────────────────────
+  let _dailySummarySent = false;
+  setInterval(async () => {
+    try {
+      const now = new Date();
+      const hr = now.getUTCHours();
+      const min = now.getUTCMinutes();
+      // Fire once per day at 23:59-23:59:59 UTC
+      if (hr === 23 && min === 59 && !_dailySummarySent) {
+        _dailySummarySent = true;
+        const { getLedgerStats } = await import('./memory/ledger.js');
+        const { getDailyStats } = await import('./core/circuit-breaker.js');
+        const [ledger, cb] = await Promise.all([
+          getLedgerStats(100).catch(() => ({})),
+          getDailyStats().catch(() => ({})),
+        ]);
+        const trades = ledger.trades || [];
+        const wins = trades.filter((t) => (t.pnl_pct ?? 0) >= 0);
+        const losses = trades.filter((t) => (t.pnl_pct ?? 0) < 0);
+        const netPnl = trades.reduce((s, t) => s + (t.pnl_sol || 0), 0);
+        const best = wins.length > 0 ? wins.reduce((a, b) => ((a.pnl_pct || 0) > (b.pnl_pct || 0) ? a : b)) : null;
+        const worst = losses.length > 0 ? losses.reduce((a, b) => ((a.pnl_pct || 0) < (b.pnl_pct || 0) ? a : b)) : null;
+
+        const portResult = cb;
+        const portfolioSol = portResult?.loss_sol_today
+          ? Math.abs(portResult.loss_sol_today) + Math.abs(netPnl)
+          : 0;
+        const returnPct = portfolioSol > 0 ? (netPnl / portfolioSol) * 100 : 0;
+
+        await sendNotification(formatDailySummary({
+          date: now.toISOString().slice(0, 10),
+          total: trades.length,
+          wins: wins.length,
+          losses: losses.length,
+          net_pnl: netPnl,
+          best_symbol: best?.symbol || '?',
+          best_pct: best?.pnl_pct || 0,
+          worst_symbol: worst?.symbol || '?',
+          worst_pct: worst?.pnl_pct || 0,
+          win_rate: trades.length > 0 ? (wins.length / trades.length) * 100 : 0,
+          portfolio: portfolioSol,
+          return_pct: returnPct,
+        }), { event: 'daily_summary' });
+      }
+    } catch (e) {
+      log.warn('daily-summary', `Failed: ${e.message}`);
+    }
+  }, 60_000);
+  // Reset flag at midnight UTC
+  setInterval(() => {
+    const now = new Date();
+    if (now.getUTCHours() === 0 && now.getUTCMinutes() === 0) {
+      _dailySummarySent = false;
+    }
+  }, 60_000);
 
   // ── 13. Register token handler ────────────────────────────────────────────
   if (aggregator) {
@@ -755,6 +820,19 @@ async function handleToken(token, deps) {
     }
 
     log.info('position', `Opened: ${symbol} — ${finalAmount} SOL, SL ${position.hard_stop_loss_pct}%`);
+
+    // Notify: trade open
+    const entryParams0 = decision?.entry_params || {};
+    sendNotification(formatTradeOpen({
+      symbol,
+      address,
+      size: finalAmount,
+      market_cap: tokenData?.market_cap,
+      entry_price: result.entryPriceUsd || tokenData?.price_usd,
+      sl_pct: entryParams0.sl_pct ?? position.hard_stop_loss_pct,
+      tp_pct: entryParams0.take_profit_pct ?? position.take_profit_pct,
+    }), { event: 'trade_open' }).catch(() => {});
+
   } catch (err) {
     log.error('position', `Failed to record position for ${symbol}: ${err.message}`);
   }
@@ -993,6 +1071,21 @@ async function forceExit(position, reason, deps) {
     }
 
     log.info('exit', `${position.symbol} exited: ${pnlSol >= 0 ? '+' : ''}${pnlSol.toFixed(4)} SOL (${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(2)}%) — ${reason}`);
+
+    // Notify: trade close
+    const exitReason = reason || 'unknown';
+    const eventKey = exitReason === 'hard_stop_loss' ? 'hard_stop_loss'
+      : exitReason === 'take_profit' ? 'take_profit'
+      : 'trade_close';
+    sendNotification(formatTradeClose({
+      symbol: position.symbol,
+      address: position.token_address,
+      pnl_pct: pnlPct,
+      pnl_sol: pnlSol,
+      hold_duration_minutes: closed.hold_duration_minutes || 0,
+      exit_reason: exitReason,
+    }), { event: eventKey }).catch(() => {});
+
   } catch (err) {
     log.error('exit', `Force exit failed for ${position.symbol}: ${err.message}`);
   }

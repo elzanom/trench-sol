@@ -59,40 +59,24 @@ function getDb() {
 
 // ─── Telegram Notifier ────────────────────────────────────────────────────────
 
-let telegramClient = null;
-
 async function sendTelegramNotify(message) {
-  const config = loadConfig();
-  if (!config.circuit_breaker?.notify_telegram) {
-    return;
+  if (!process.env.TELEGRAM_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN === 'your_bot_token_here') {
+    return; // not configured
   }
-
   const chatId = process.env.TELEGRAM_NOTIFY_CHAT_ID;
-  if (!chatId) {
-    console.log('[circuit-breaker] TELEGRAM_NOTIFY_CHAT_ID not set, skipping notification');
-    return;
-  }
+  if (!chatId) return;
 
   try {
-    // Lazy-load gramjs to avoid circular deps
-    const { TelegramClient, Api } = await import('gramjs');
-    const store = { sessionLoaded: false };
-
-    if (!telegramClient) {
-      const { createClient } = await import('../feeds/telegram.js');
-      telegramClient = await createClient();
-    }
-
-    await telegramClient.invoke(
-      new Api.messages.SendMessage({
-        peer: chatId,
-        message,
-        randomId: BigInt(Date.now()),
-      })
-    );
-    console.log(`[circuit-breaker] Telegram notification sent: ${message}`);
-  } catch (err) {
-    console.error(`[circuit-breaker] Telegram notify failed: ${err.message}`);
+    const { sendNotification, formatCircuitBreaker } = await import('./notifier.js');
+    const state = { dailyLossSol: 0, tradesToday: 0 };
+    try {
+      const s = await getDailyStats();
+      state.dailyLossSol = s.loss_sol_today || 0;
+      state.tradesToday = s.trade_count_today || 0;
+    } catch {}
+    await sendNotification(formatCircuitBreaker({ ...state }), { event: 'circuit_breaker_trip' });
+  } catch (e) {
+    console.log('[circuit-breaker] notify failed:', e.message);
   }
 }
 
