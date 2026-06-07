@@ -921,6 +921,19 @@ async function forceExit(position, reason, deps) {
         feed_source: position.feed_source || null,
         entry_market_cap_usd: position.entry_market_cap_usd ?? null,  // 2026-06-07
       });
+
+      // 2026-06-07: BUG 3 fix — update signal_stats table for accuracy tracking.
+      // Was never called before, so signal_accuracy card always showed "No signal data".
+      try {
+        const { updateSignalStats } = await import('./memory/ledger.js');
+        await updateSignalStats(
+          position.signal_tags || [],
+          pnlSol,
+          pnlSol > 0
+        );
+      } catch (err) {
+        log.warn('signal-stats', `Failed: ${err.message}`);
+      }
     } catch (err) {
       log.warn('ledger', `Failed to record trade: ${err.message}`);
     }

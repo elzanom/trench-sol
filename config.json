@@ -6,7 +6,7 @@
     "log_level": "info"
   },
   "paper_trading": {
-    "paper_starting_balance_sol": 1.0
+    "paper_starting_balance_sol": 1
   },
   "llm": {
     "provider": "opencode",
@@ -53,7 +53,9 @@
       }
     },
     "max_concurrent_positions": 3,
-    "hard_stop_loss_pct": -20
+    "hard_stop_loss_pct": -20,
+    "take_profit_pct": 40,
+    "timeout_exit_minutes": 120
   },
   "hard_rules": {
     "min_liquidity_usd": 2000,
@@ -86,13 +88,19 @@
       "dev_dump_threshold_pct": 20,
       "liquidity_drop_pct": 30,
       "holder_drop_pct": 15
-    }
+    },
+    "timeout_exit_minutes": 120
   },
   "feeds": {
     "gmgn": {
       "enabled": true,
       "poll_interval_ms": 30000,
-      "streams": ["trending_5m", "new_creation", "near_graduation", "kol_new"]
+      "streams": [
+        "trending_5m",
+        "new_creation",
+        "near_graduation",
+        "kol_new"
+      ]
     },
     "pumpfun": {
       "enabled": false,
@@ -102,7 +110,10 @@
     "screener": {
       "enabled": false,
       "_deprecated": "use feeds.gmgn (see feeds/gmgn.js)",
-      "providers": ["dexscreener", "gmgn"],
+      "providers": [
+        "dexscreener",
+        "gmgn"
+      ],
       "poll_interval_ms": 30000,
       "filters": {
         "min_volume_1h_usd": 10000,
@@ -183,8 +194,12 @@
   "gmgn": {
     "enabled": true,
     "api_key_env": "GMGN_API_KEY",
-    "intervals": ["5m"],
-    "platforms": ["Pump.fun"],
+    "intervals": [
+      "5m"
+    ],
+    "platforms": [
+      "Pump.fun"
+    ],
     "include_near_graduation": true,
     "include_kol_bought": true,
     "poll_interval_ms": 30000
@@ -215,5 +230,7 @@
     "enabled": true,
     "port": 3000,
     "auth_token": "change_this_token"
-  }
+  },
+  "path": "position.take_profit_pct",
+  "value": 200
 }

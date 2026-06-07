@@ -117,13 +117,11 @@ export function buildApp(state = null) {
         totalExposureSol = active.reduce((s, p) => s + (p.amount_sol || 0), 0);
       } catch {}
 
-      // Get circuit breaker status
+      // Get circuit breaker status (2026-06-07: read directly from DB to avoid stale class state)
       let cbStatus = {};
       try {
-        const { CircuitBreaker } = await import('../core/circuit-breaker.js');
-        const cb = new CircuitBreaker(config);
-        await cb.loadDailyStats();
-        cbStatus = await cb.getDailyStats();
+        const { getDailyStats } = await import('../core/circuit-breaker.js');
+        cbStatus = await getDailyStats();
       } catch {}
 
       const status = isPaused ? 'PAUSED' : (cbStatus.is_tripped ? 'TRIPPED' : 'RUNNING');
@@ -139,6 +137,9 @@ export function buildApp(state = null) {
         circuit_breaker_tripped: cbStatus.is_tripped || false,
         daily_trades: cbStatus.trade_count_today || 0,
         daily_loss_sol: cbStatus.loss_sol_today || 0,
+        // 2026-06-07: agent process info for navbar display
+        pid: process.pid,
+        uptime_s: Math.floor(process.uptime()),
         config_hash: checksum(JSON.stringify(config)),
       });
     } catch (err) {
@@ -518,6 +519,18 @@ export function buildApp(state = null) {
         best: bestRow.best || 0,
         worst: worstRow.worst || 0,
       });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ── GET /api/log ──────────────────────────────────────────────────────────────
+  // 2026-06-07: live log stream from core/logger.js SHARED_LOG_BUFFER
+  // (circular, max 50 lines, captures every createLogger instance)
+  app.get('/api/log', async (req, res) => {
+    try {
+      const { getLogBuffer } = await import('../core/logger.js');
+      res.json({ lines: getLogBuffer() });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }

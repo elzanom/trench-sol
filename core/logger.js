@@ -57,6 +57,12 @@ export function createLogger(moduleName) {
       // Silently fail if log write fails
     }
 
+    // 2026-06-07: push to shared buffer (circular, max 50 lines)
+    SHARED_LOG_BUFFER.push(logLine + (data ? ' ' + JSON.stringify(data) : ''));
+    if (SHARED_LOG_BUFFER.length > MAX_LOG_LINES) {
+      SHARED_LOG_BUFFER.shift();
+    }
+
     if (level === 'ERROR') {
       console.error(logLine, data || '');
     } else {
@@ -70,4 +76,13 @@ export function createLogger(moduleName) {
     error: (msg, data) => log('ERROR', msg, data),
     debug: (msg, data) => log('DEBUG', msg, data),
   };
+}
+
+// 2026-06-07: shared circular log buffer for dashboard /api/log endpoint.
+// Captures every log line from every createLogger instance (module-scoped state).
+const SHARED_LOG_BUFFER = [];
+const MAX_LOG_LINES = 50;
+
+export function getLogBuffer() {
+  return [...SHARED_LOG_BUFFER];  // return copy to prevent external mutation
 }

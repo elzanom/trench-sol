@@ -818,41 +818,56 @@ function appendLogLine(tag, text) {
   if (state.logLines.length > 50) state.logLines.shift();
 }
 
+// 2026-06-07: refreshLog now fetches from /api/log (real log stream from core/logger.js
+// SHARED_LOG_BUFFER). Format: [ISO-timestamp] [LEVEL] [module] message
+// Tag mapping: INFO→LOG, WARN→WARN, ERROR→ERR, DEBUG→DBG
+function parseLogLine(raw) {
+  const m = String(raw).match(/^\[([^\]]+)\]\s+\[([^\]]+)\]\s+\[([^\]]+)\]\s+(.*)$/);
+  if (!m) return { ts: '', level: 'LOG', module: '?', text: String(raw) };
+  return { ts: m[1], level: m[2], module: m[3], text: m[4] };
+}
+
+function logLevelToTag(level) {
+  const lv = (level || '').toUpperCase();
+  if (lv === 'WARN') return 'WARN';
+  if (lv === 'ERROR') return 'ERR';
+  if (lv === 'DEBUG') return 'DBG';
+  return 'LOG';
+}
+
 async function refreshLog() {
-  // The server doesn't expose a live log stream. Build a stub from recent
-  // activity: last 5 decisions, last 3 trades, last 2 status changes.
-  const lines = [];
-
-  // Last status (one-liner)
+  let lines = [];
   try {
-    const status = await api('/api/status');
-    lines.push({ tag: 'FEED', text: `status=${status.status || status.mode} active=${status.active_positions ?? 0} paused=${!!status.is_paused}` });
-  } catch {}
-
-  // Decisions
-  for (const d of state.lastDecisions.slice(0, 5)) {
-    const tag = (d.decision || '').toString().toUpperCase() === 'BUY' ? 'BUY' : 'SKIP';
-    lines.push({ tag, text: `${d.symbol || '?'} conf=${d.confidence != null ? Number(d.confidence).toFixed(2) : '--'} ${(d.reasoning || '').slice(0, 80)}` });
-  }
-
-  // Trades
-  for (const t of state.lastTrades.slice(0, 3)) {
-    const pnl = t.pnl_sol != null ? Number(t.pnl_sol).toFixed(4) : '--';
-    const reason = (t.exit_reason || 'unknown').toString().toUpperCase();
-    lines.push({ tag: 'EXIT', text: `${t.symbol || '?'} pnl_sol=${pnl} reason=${reason}` });
+    const data = await api('/api/log');
+    lines = Array.isArray(data.lines) ? data.lines : [];
+  } catch {
+    // 2026-06-07: fallback to old stub if /api/log not available
+    lines = [];
+    try {
+      const status = await api('/api/status');
+      lines.push(`status=${status.status || status.mode} active=${status.active_positions ?? 0} paused=${!!status.is_paused}`);
+    } catch {}
+    for (const d of state.lastDecisions.slice(0, 5)) {
+      const tag = (d.decision || '').toString().toUpperCase() === 'BUY' ? 'BUY' : 'SKIP';
+      lines.push(`[stub] [${tag}] ${d.symbol || '?'} conf=${d.confidence != null ? Number(d.confidence).toFixed(2) : '--'}`);
+    }
   }
 
   const root = document.getElementById('log-output');
   if (!root) return;
 
   if (!lines.length) {
-    root.innerHTML = '<div class="text-muted">No activity yet</div>';
+    root.innerHTML = '<div class="text-muted">No log activity yet</div>';
     return;
   }
 
-  root.innerHTML = lines.map(l =>
-    `<span class="log-line"><span class="tag-${l.tag}">[${l.tag}]</span> ${escHtml(l.text)}</span>`
-  ).join('');
+  // Render real log lines (newest last, with color coding)
+  root.innerHTML = lines.map(raw => {
+    const p = parseLogLine(raw);
+    const tag = logLevelToTag(p.level);
+    const tsShort = p.ts ? p.ts.slice(11, 19) : '';  // HH:MM:SS
+    return `<span class="log-line"><span class="tag-${tag}">[${tag}]</span> <span class="log-time">${tsShort}</span> <span class="log-module">[${escHtml(p.module)}]</span> ${escHtml(p.text)}</span>`;
+  }).join('');
   root.scrollTop = root.scrollHeight;
 }
 
