@@ -124,7 +124,13 @@ export async function indexTrade(trade) {
       timestamp: trade.entry_time || Date.now(),
     },
   };
-  await index.insertItem(item);
+  // 2026-06-07: BUG fix — use upsertItem instead of insertItem. The same trade_id is
+  // used on OPEN (line 714 in index.js) and CLOSE (line 952), so a second
+  // insertItem throws "Item with id X already exists" and the close-side
+  // update is silently swallowed. upsertItem updates the existing entry in place,
+  // so the latest pnl_sol / exit_reason / hold_duration_minutes are persisted.
+  // This is why the index previously had only `exit_reason: "open"` entries.
+  await index.upsertItem(item);
   return { id, success: true };
 }
 

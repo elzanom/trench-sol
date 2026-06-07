@@ -62,7 +62,7 @@
     "max_liquidity_usd": 500000,
     "min_holder_count": 30,
     "min_holders": 30,
-    "max_dev_wallet_pct": 35,
+    "max_dev_wallet_pct": 50,
     "min_rugcheck_score": 70,
     "block_bundled_launch": true,
     "block_mintable": true,

@@ -503,6 +503,15 @@ async function handleToken(token, deps) {
   // Calculate total exposure
   const totalExposureSol = activePositions.reduce((sum, p) => sum + (p.amount_sol || 0), 0);
 
+  // 2026-06-07: BUG fix — prevent buying the same token twice.
+  // Without this guard, the agent re-buys the same symbol after SL (e.g. Bountycore
+  // was bought 3x in one session). Check BEFORE on-chain fetch to save API calls.
+  if (activePositions.some(p => p.token_address === address)) {
+    log.info('skip', `${symbol}: already have active position`);
+    incrementRejection('duplicate_position');
+    return;
+  }
+
   const context = {
     activePositions,
     consecutiveLosses,
@@ -902,6 +911,7 @@ async function forceExit(position, reason, deps) {
     try {
       const { recordTrade } = await import('./memory/ledger.js');
       await recordTrade({
+        id: position.id,  // 2026-06-07: pass through to keep DB id == RAG id == position.id
         token_address: position.token_address,
         symbol: position.symbol,
         entry_time: position.entry_time ?? Date.now(),  // 2026-06-07: was missing
