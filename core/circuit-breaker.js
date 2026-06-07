@@ -67,14 +67,14 @@ async function sendTelegramNotify(message) {
   if (!chatId) return;
 
   try {
-    const { sendNotification, formatCircuitBreaker } = await import('./notifier.js');
-    const state = { dailyLossSol: 0, tradesToday: 0 };
+    const { notifyCircuitBreaker } = await import('./notifier.js');
+    const state = { dailyLossSol: 0, tradesToday: 0, loss_sol_today: 0, trade_count_today: 0, portfolio_sol: 0 };
     try {
       const s = await getDailyStats();
-      state.dailyLossSol = s.loss_sol_today || 0;
-      state.tradesToday = s.trade_count_today || 0;
+      state.loss_sol_today = s.loss_sol_today || 0;
+      state.trade_count_today = s.trade_count_today || 0;
     } catch {}
-    await sendNotification(formatCircuitBreaker({ ...state }), { event: 'circuit_breaker_trip' });
+    await notifyCircuitBreaker(state);
   } catch (e) {
     console.log('[circuit-breaker] notify failed:', e.message);
   }

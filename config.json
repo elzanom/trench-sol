@@ -232,17 +232,15 @@
     "auth_token": "change_this_token"
   },
   "notifications": {
-    "telegram": {
+    "telegram_bot": {
       "enabled": true,
-      "bot_token_env": "TELEGRAM_BOT_TOKEN",
-      "chat_id_env": "TELEGRAM_NOTIFY_CHAT_ID",
-      "topic_id_env": "TELEGRAM_NOTIFY_TOPIC_ID",
       "events": {
         "trade_open": true,
         "trade_close": true,
-        "circuit_breaker_trip": true,
         "hard_stop_loss": true,
         "take_profit": true,
+        "timeout_exit": true,
+        "circuit_breaker_trip": true,
         "agent_start": true,
         "agent_error": true,
         "daily_summary": true
