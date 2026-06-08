@@ -1064,13 +1064,28 @@ async function forceExit(position, reason, deps) {
 
     // Notify: trade close
     const exitReason = reason || 'unknown';
+    // Calculate paper portfolio for notification
+    let portfolioSol = 0;
+    if (isPaperMode) {
+      try {
+        const { getLedgerStats } = await import('./memory/ledger.js');
+        const ledger = await getLedgerStats(100).catch(() => ({}));
+        const trades = ledger.trades || [];
+        const totalPnl = trades.reduce((s, t) => s + (t.pnl_sol || 0), 0);
+        const startingSol = config.paper_trading?.paper_starting_balance_sol || 1;
+        portfolioSol = startingSol + totalPnl;
+      } catch (e) {
+        log.warn('exit', `Portfolio calc failed: ${e.message}`);
+        portfolioSol = 0;
+      }
+    }
     notifyTradeClose(position, {
       pnl_pct: pnlPct,
       pnl_sol: pnlSol,
       exit_price_usd: exitPriceUsd,
       hold_duration_minutes: closed.hold_duration_minutes || 0,
       exit_reason: exitReason,
-      portfolio_sol: 0,
+      portfolio_sol: portfolioSol,
       return_pct: 0,
       consecutive_losses: 0,
     }).catch(() => {});
