@@ -5,6 +5,8 @@
 
 import { TelegramClient } from 'telegram';
 import { StringSession } from 'telegram/sessions/index.js';
+import tlPkg from 'telegram/tl/index.js';
+const { Ping } = tlPkg;
 import { createLogger } from '../core/logger.js';
 
 const log = createLogger('telegram-feed');
@@ -48,6 +50,9 @@ export class TelegramFeed {
     this._connected = true;
     log.info('Connected to Telegram');
 
+    // ── Keepalive ping setiap 45 detik ──────────────────────────────────
+    this._startPingInterval();
+
     // Subscribe to configured groups
     const groups = this.tgConfig.groups || [];
     let subscribed = 0;
@@ -77,14 +82,25 @@ export class TelegramFeed {
     log.info(`Telegram feed ready (${subscribed}/${groups.length} groups, min_confidence=${this.minConfidence})`);
   }
 
+  /** ─── Keepalive ping interval ─────────────────────────────────────── */
+  _startPingInterval() {
+    if (this._pingInterval) clearInterval(this._pingInterval);
+    this._pingInterval = setInterval(async () => {
+      try {
+        await this.client.invoke(new Ping({ ping_id: BigInt(Date.now()) }));
+      } catch {
+        // ignore — auto-reconnect handles dropped connections
+      }
+    }, 45_000);
+  }
+
   /** ─── Handle incoming message ──────────────────────────────────────── */
   async _onMessage(message) {
-    if (!message || !message.text) return;
+    if (!message) return;
+    if (!message.text) return;
 
     const text = message.text;
-    const chatName = message.chat?.title
-      || message.chat?.username
-      || `chat_${message.chatId?.value || message.chatId || '?'}`;
+    const chatName = message.chat?.title || message.chat?.username || `chat_${message.chatId?.value || message.chatId || '?'}`;
 
     // Extract Solana addresses (base58, 32-44 chars)
     const addresses = text.match(/[1-9A-HJ-NP-Za-km-z]{32,44}/g);
@@ -200,6 +216,7 @@ export class TelegramFeed {
   async stop() {
     this.running = false;
     if (this._reconnectTimer) clearTimeout(this._reconnectTimer);
+    if (this._pingInterval) clearInterval(this._pingInterval);
     if (this.client) {
       try { await this.client.disconnect(); } catch {}
       this.client = null;
